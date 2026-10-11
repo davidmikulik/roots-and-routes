@@ -35,7 +35,6 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: 'GEDCOM file imported successfully',
       data: {
-        fileId: crypto.randomUUID(),
         parseResult,
         locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations },
       },

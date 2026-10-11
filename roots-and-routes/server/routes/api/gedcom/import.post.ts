@@ -1,9 +1,9 @@
 // GEDCOM Import API Endpoint
 import { parseGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations, getUniqueGedcomLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
-import { uploadGedcomFile, saveParsedGedcom, validateFileSize, isGedcomFile } from '~~/server/utils/storage'
+import { validateFileSize, isGedcomFile } from '~~/server/utils/storage'
 import { loadKnownLocations } from '~~/server/utils/locationStorage'
-import type { GedcomParseResult, UploadedFile } from '~~/types'
+import type { GedcomParseResult } from '~~/types'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
@@ -31,15 +31,11 @@ export default defineEventHandler(async (event) => {
     const matchedLocations = applyKnownLocations(parseResult.file, knownLocations)
     const matchedNames = new Set(matchedLocations.map(location => normalizeLocationName(location.name)))
     const unresolvedLocations = uniqueLocations.filter(location => !matchedNames.has(normalizeLocationName(location)))
-    importStage = 'uploading original GEDCOM to Blob'
-    const uploadedFile: UploadedFile = await uploadGedcomFile(Buffer.from(file), filename, { overwrite: false })
-    importStage = 'saving parsed GEDCOM to Blob'
-    await saveParsedGedcom(parseResult.file, uploadedFile.id)
     return {
       success: true,
       message: 'GEDCOM file imported successfully',
       data: {
-        file: uploadedFile,
+        fileId: crypto.randomUUID(),
         parseResult,
         locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations },
       },

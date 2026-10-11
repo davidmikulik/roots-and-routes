@@ -9,7 +9,7 @@ import { applyKnownLocations } from '~~/utils/gedcom/locations'
 
 interface GedcomImportResponse {
   data: {
-    file: { id: string }
+    fileId: string
     locations: { unique: string[]; matched: KnownLocation[]; unresolved: string[] }
   }
 }
@@ -119,7 +119,7 @@ const handleFile = async (file: File) => {
           return
         }
 
-        const parseResult = await gedcomStore.parseFile(content, response.data.file.id, undefined, response.data.locations.matched)
+        const parseResult = await gedcomStore.parseFile(content, response.data.fileId, undefined, response.data.locations.matched)
         
         if (!parseResult) {
           throw new Error('Failed to parse GEDCOM file')

@@ -29,10 +29,11 @@ export async function saveKnownLocations(locations: KnownLocation[]): Promise<vo
   const token = getBlobToken()
   if (!token) throw createError({ statusCode: 503, statusMessage: 'Blob storage is not configured' })
   await put(locationsPath(), JSON.stringify(locations, null, 2), {
-    access: 'public',
+    access: 'private',
     token,
     contentType: 'application/json',
     addRandomSuffix: false,
+    allowOverwrite: true,
   })
 }
 

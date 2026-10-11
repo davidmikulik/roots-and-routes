@@ -1,19 +1,23 @@
 // Vercel Blob Storage Utilities
-import { put, del, list, head } from '@vercel/blob'
+import { put, get, del, list, head } from '@vercel/blob'
 import type { GedcomFile, GedcomParseResult, UploadedFile } from '~~/types'
 
 const getBlobToken = (): string => useRuntimeConfig().vercelBlob?.token || process.env.BLOB_READ_WRITE_TOKEN || ''
 const getUploadDir = (): string => useRuntimeConfig().gedcom?.uploadDir || 'uploads/gedcom'
+const requireBlobToken = (): string => {
+  const token = getBlobToken()
+  if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
+  return token
+}
 
 export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {
   const { userId, overwrite, metadata } = options
   const extension = filename.split('.').pop() || 'ged'
   const uniqueId = crypto.randomUUID()
   const storageFilename = userId ? `${getUploadDir()}/${userId}/${uniqueId}.${extension}` : `${getUploadDir()}/${uniqueId}.${extension}`
-  const token = getBlobToken()
-  if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
+  const token = requireBlobToken()
   let content: Buffer | string = typeof file === 'string' ? file : file
-  const blob = await put(storageFilename, content, { access: 'public', token, addRandomSuffix: !overwrite, ...metadata })
+  const blob = await put(storageFilename, content, { access: 'private', token, addRandomSuffix: !overwrite, ...metadata })
   const size = typeof file === 'string' ? Buffer.byteLength(content as string) : (content as Buffer).byteLength
   return {
     id: uniqueId, name: filename, originalName: filename, size,
@@ -24,35 +28,33 @@ export async function uploadGedcomFile(file: Buffer | string, filename: string, 
 }
 
 export async function downloadFile(path: string): Promise<Buffer> {
-  const blob = await head(path, { token: getBlobToken() })
-  const response = await fetch(blob.url)
-  if (!response.ok) throw new Error(`Failed to download blob: ${response.statusText}`)
-  return Buffer.from(await response.arrayBuffer())
+  const blob = await get(path, { access: 'private', token: requireBlobToken() })
+  if (!blob?.stream) throw createError({ statusCode: 404, statusMessage: 'Blob not found' })
+  return Buffer.from(await new Response(blob.stream).arrayBuffer())
 }
 
 export async function getFileText(path: string): Promise<string> {
-  const blob = await head(path, { token: getBlobToken() })
-  const response = await fetch(blob.url)
-  if (!response.ok) throw new Error(`Failed to download blob: ${response.statusText}`)
-  return await response.text()
+  const blob = await get(path, { access: 'private', token: requireBlobToken() })
+  if (!blob?.stream) throw createError({ statusCode: 404, statusMessage: 'Blob not found' })
+  return await new Response(blob.stream).text()
 }
 
 export async function getFileMetadata(path: string) {
-  return await head(path, { token: getBlobToken() })
+  return await head(path, { token: requireBlobToken() })
 }
 
 export async function deleteFile(path: string): Promise<boolean> {
-  try { await del(path, { token: getBlobToken() }); return true } catch (error) { console.error('Failed to delete file:', error); return false }
+  try { await del(path, { token: requireBlobToken() }); return true } catch (error) { console.error('Failed to delete file:', error); return false }
 }
 
 export async function listFiles(prefix: string = ''): Promise<string[]> {
-  const { blobs } = await list({ prefix, token: getBlobToken() })
+  const { blobs } = await list({ prefix, token: requireBlobToken() })
   return blobs.map(blob => blob.pathname)
 }
 
 export async function listUserFiles(userId?: string): Promise<UploadedFile[]> {
   const prefix = userId ? `${getUploadDir()}/${userId}` : getUploadDir()
-  const { blobs } = await list({ prefix, token: getBlobToken() })
+  const { blobs } = await list({ prefix, token: requireBlobToken() })
   return blobs.map(blob => ({
     id: blob.pathname.split('/').pop()?.replace('.ged', '').replace('.gedcom', '') || '',
     name: blob.pathname.split('/').pop() || '',
@@ -71,11 +73,10 @@ export async function fileExists(path: string): Promise<boolean> {
 }
 
 export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?: string): Promise<string> {
-  const token = getBlobToken()
-  if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
+  const token = requireBlobToken()
   const jsonString = JSON.stringify(data)
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
-  await put(path, jsonString, { access: 'public', token, contentType: 'application/json' })
+  await put(path, jsonString, { access: 'private', token, contentType: 'application/json' })
   return path
 }
 
@@ -87,7 +88,7 @@ export async function loadParsedGedcom(fileId: string, userId?: string): Promise
 export async function saveExportedGedcom(content: string, filename: string, userId?: string): Promise<UploadedFile> {
   const uniqueId = crypto.randomUUID()
   const path = userId ? `${getUploadDir()}/${userId}/exports/${uniqueId}.ged` : `${getUploadDir()}/exports/${uniqueId}.ged`
-  const blob = await put(path, content, { access: 'public', token: getBlobToken(), contentType: 'application/octet-stream' })
+  const blob = await put(path, content, { access: 'private', token: requireBlobToken(), contentType: 'application/octet-stream' })
   return {
     id: uniqueId, name: filename, originalName: filename, size: content.length,
     mimeType: 'application/octet-stream', extension: 'ged', path, url: blob.url,

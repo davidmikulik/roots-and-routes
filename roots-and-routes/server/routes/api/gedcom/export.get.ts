@@ -1,6 +1,6 @@
 // GEDCOM Export API Endpoint
 import { writeGedcom } from '~~/utils/gedcom/parser'
-import { loadParsedGedcom, saveExportedGedcom } from '~~/server/utils/storage'
+import { loadParsedGedcom } from '~~/server/utils/storage'
 import type { GedcomFile } from '~~/types'
 
 export default defineEventHandler(async (event) => {
@@ -33,8 +33,7 @@ export default defineEventHandler(async (event) => {
           notes: new Map(gedcomFile.notes),
         }
         const gedcomContent = writeGedcom(exportFile, { version: '5.5', encoding: 'UTF-8' })
-        const exportedFile = await saveExportedGedcom(gedcomContent, `export_${Date.now()}.ged`, userId)
-        return { success: true, message: 'GEDCOM export completed', data: { format: 'gedcom', url: exportedFile.url, size: exportedFile.size, filename: exportedFile.name, fileId: exportedFile.id }, timestamp: new Date().toISOString() }
+        return { success: true, message: 'GEDCOM export completed', data: { format: 'gedcom', content: gedcomContent, size: gedcomContent.length, filename: `export_${Date.now()}.ged` }, timestamp: new Date().toISOString() }
       case 'json':
         const jsonData = { version: gedcomFile.version, encoding: gedcomFile.encoding, source: gedcomFile.source, date: gedcomFile.date.toISOString(), metadata: gedcomFile.metadata, individuals: Array.from(gedcomFile.individuals.values()), families: Array.from(gedcomFile.families.values()), sources: Array.from(gedcomFile.sources.values()), repositories: Array.from(gedcomFile.repositories.values()), multimedia: Array.from(gedcomFile.multimedia.values()), notes: Array.from(gedcomFile.notes.values()) }
         return { success: true, message: 'JSON export completed', data: { format: 'json', content: jsonData, size: JSON.stringify(jsonData).length }, timestamp: new Date().toISOString() }

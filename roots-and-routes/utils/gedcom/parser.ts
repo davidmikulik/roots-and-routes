@@ -13,6 +13,7 @@ const DEFAULT_OPTIONS: GedcomParseOptions = { maxLines: 0, resolveXrefs: true, e
 const MONTHS: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 }
 const CZECH_MONTHS: Record<string, number> = { LEDEN: 0, ÚNOR: 1, BŘEZEN: 2, DUBEN: 3, KVĚTEN: 4, ČERVEN: 5, ČERVENEC: 6, SRPEN: 7, ZÁŘÍ: 8, ŘÍJEN: 9, LISTOPAD: 10, PROSINEC: 11 }
 const RECORD_TAGS = ['INDI', 'FAM', 'SOUR', 'REPO', 'NOTE', 'OBJE', 'SUBM', 'HEAD', 'TRLR']
+const normalizeXref = (value: string): string => value.replace(/^@|@$/g, '')
 
 // Event type mapping
 const EVENT_TYPES: GedcomEventType[] = [
@@ -48,6 +49,8 @@ const EVENT_ICONS: Record<GedcomEventType, string> = {
 class GedcomParser {
   private lines: GedcomLine[] = []
   private options: GedcomParseOptions
+  private currentIndividualEvent: GedcomEvent | null = null
+  private currentFamilyEvent: GedcomEvent | null = null
   
   constructor(options: GedcomParseOptions = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options }
@@ -93,11 +96,12 @@ class GedcomParser {
     
     const xrefMatch = rest.match(/^@([^@]+)@/)
     if (xrefMatch) {
-      xrefId = `@${xrefMatch[1]}@`
+      xrefId = xrefMatch[1]
       tag = rest.substring(xrefMatch[0].length).trim()
     }
-    
-    const value = tag ? rest.substring(tag.length).trim() : ''
+    const separator = tag.indexOf(' ')
+    const value = separator === -1 ? '' : tag.slice(separator + 1).trim()
+    tag = separator === -1 ? tag : tag.slice(0, separator)
     return { level, tag, value, xrefId }
   }
 
@@ -130,6 +134,8 @@ class GedcomParser {
     for (const line of this.lines) {
       if (line.level === 0) {
         if (currentRecord) this.saveRecord(currentRecord, file)
+        this.currentIndividualEvent = null
+        this.currentFamilyEvent = null
         
         if (line.xrefId && RECORD_TAGS.includes(line.tag)) {
           currentRecord = { type: line.tag, xrefId: line.xrefId, data: this.createRecord(line.tag, line.xrefId) }
@@ -289,6 +295,13 @@ class GedcomParser {
     const tag = line.tag.toUpperCase()
     const value = line.value
     const xrefId = line.xrefId
+
+    if (line.level > 1 && this.currentIndividualEvent) {
+      this.processEventDetail(line, this.currentIndividualEvent)
+      return
+    }
+
+    this.currentIndividualEvent = null
     
     switch (tag) {
       case 'NAME':
@@ -298,33 +311,38 @@ class GedcomParser {
         individual.sex = value === 'M' ? 'M' : value === 'F' ? 'F' : ''
         break
       case 'FAMC':
-        if (value) individual.familiesAsChild.push(value)
+        if (value) individual.familiesAsChild.push(normalizeXref(value))
         break
       case 'FAMS':
-        if (value) individual.familiesAsSpouse.push(value)
+        if (value) individual.familiesAsSpouse.push(normalizeXref(value))
         break
       case 'NOTE':
         if (xrefId) individual.notes.push(xrefId)
         else if (value) individual.notes.push(value)
         break
       case 'SOUR':
-        individual.sourceCitations.push({ xref: value, page: '', confidence: 2 })
+        individual.sourceCitations.push({ xref: normalizeXref(value), page: '', confidence: 2 })
         break
       case 'OBJE':
-        if (value) individual.multimediaLinks.push(value)
+        if (value) individual.multimediaLinks.push(normalizeXref(value))
         break
       case 'ASSO':
-        individual.associations.push({ individualXref: value, relationship: '', description: '' })
+        individual.associations.push({ individualXref: normalizeXref(value), relationship: '', description: '' })
         break
       default:
-        // Check if it's an event type
         if (EVENT_TYPES.includes(tag as GedcomEventType)) {
-          if (!individual.attributes[tag]) individual.attributes[tag] = []
-          individual.attributes[tag].push(value)
+          const event = this.createEvent(tag as GedcomEventType, value)
+          const eventKeys: Partial<Record<GedcomEventType, keyof GedcomIndividual>> = {
+            BIRT: 'birth', BAPM: 'baptism', CHR: 'christening', DEAT: 'death', BURI: 'burial', CREM: 'cremation',
+          }
+          const key = eventKeys[tag as GedcomEventType]
+          if (key) (individual[key] as GedcomEvent | undefined) = event
+          else individual.events.push(event)
+          this.currentIndividualEvent = event
         } else if (line.level === 1) {
-          // Level 1 tags that might be events
           const event = this.createEvent(tag as GedcomEventType, value)
           individual.events.push(event)
+          this.currentIndividualEvent = event
         } else {
           if (!individual.attributes[tag]) individual.attributes[tag] = []
           individual.attributes[tag].push(value)
@@ -337,36 +355,70 @@ class GedcomParser {
     const tag = line.tag.toUpperCase()
     const value = line.value
     const xrefId = line.xrefId
+
+    if (line.level > 1 && this.currentFamilyEvent) {
+      this.processEventDetail(line, this.currentFamilyEvent)
+      return
+    }
+
+    this.currentFamilyEvent = null
     
     switch (tag) {
       case 'HUSB':
-        family.husband = value
+        family.husband = normalizeXref(value)
         break
       case 'WIFE':
-        family.wife = value
+        family.wife = normalizeXref(value)
         break
       case 'CHIL':
-        if (value) family.children.push(value)
+        if (value) family.children.push(normalizeXref(value))
         break
       case 'NOTE':
         if (xrefId) family.notes.push(xrefId)
         else if (value) family.notes.push(value)
         break
       case 'SOUR':
-        family.sourceCitations?.push({ xref: value, page: '', confidence: 2 })
+        family.sourceCitations?.push({ xref: normalizeXref(value), page: '', confidence: 2 })
         break
       case 'OBJE':
-        if (value) family.multimediaLinks.push(value)
+        if (value) family.multimediaLinks.push(normalizeXref(value))
         break
       case 'MARR':
       case 'DIV':
       case 'ENGA':
-        // These will be processed as nested structures
+        {
+          const event = this.createEvent(tag as GedcomEventType, value)
+          if (tag === 'MARR') family.marriage = event
+          else if (tag === 'DIV') family.divorce = event
+          else family.engagements = [...(family.engagements || []), event]
+          this.currentFamilyEvent = event
+        }
         break
       default:
         if (!family.userData[tag]) family.userData[tag] = []
         family.userData[tag].push(value)
         break
+    }
+  }
+
+  private processEventDetail(line: GedcomLine, event: GedcomEvent) {
+    const tag = line.tag.toUpperCase()
+    const value = line.value
+    if (tag === 'DATE') event.date = this.parseDate(value)
+    else if (tag === 'PLAC') event.place = value
+    else if (tag === 'CAUS') event.cause = value
+    else if (tag === 'AGE') event.age = value
+    else if (tag === 'NOTE') event.description = value
+    else if (tag === 'TYPE' && EVENT_TYPES.includes(value as GedcomEventType)) event.type = value as GedcomEventType
+    else if (tag === 'LATI' || tag === 'LONG') {
+      const direction = value.match(/[NSEW]/i)?.[0]?.toUpperCase()
+      const number = Number(value.replace(/[NSEW]/gi, '').trim())
+      if (!Number.isFinite(number)) return
+      const coordinate = direction === 'S' || direction === 'W' ? -Math.abs(number) : Math.abs(number)
+      const coordinates = event.coordinates || [Number.NaN, Number.NaN]
+      if (tag === 'LATI') coordinates[0] = coordinate
+      else coordinates[1] = coordinate
+      event.coordinates = coordinates
     }
   }
 
@@ -639,15 +691,14 @@ class GedcomParser {
   }
 
   private resolveXrefs(file: GedcomFile) {
-    // Link families to individuals
-    for (const [xrefId, individual] of file.individuals) {
-      for (const famc of individual.familiesAsChild) {
-        const family = file.families.get(famc)
-        if (family) {
-          if (!family.children.includes(xrefId)) {
-            family.children.push(xrefId)
-          }
-        }
+    for (const [familyId, family] of file.families) {
+      for (const spouseId of [family.husband, family.wife]) {
+        const spouse = spouseId ? file.individuals.get(spouseId) : undefined
+        if (spouse && !spouse.familiesAsSpouse.includes(familyId)) spouse.familiesAsSpouse.push(familyId)
+      }
+      for (const childId of family.children) {
+        const child = file.individuals.get(childId)
+        if (child && !child.familiesAsChild.includes(familyId)) child.familiesAsChild.push(familyId)
       }
     }
     
@@ -664,10 +715,9 @@ class GedcomParser {
   }
 
   private extractCoordinates(file: GedcomFile) {
-    // This would use geocoding or place mappings
-    // For now, just extract from events that have coordinates
     for (const individual of file.individuals.values()) {
-      for (const event of individual.events) {
+      const events = [individual.birth, individual.baptism, individual.christening, individual.death, individual.burial, individual.cremation, ...individual.events]
+      for (const event of events) {
         if (event.coordinates) {
           if (!file.metadata.minLat || event.coordinates[0] < file.metadata.minLat) {
             file.metadata.minLat = event.coordinates[0]
@@ -719,6 +769,19 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
   const lines: string[] = []
   const version = options?.version || '5.5'
   const encoding = options?.encoding || 'UTF-8'
+  const appendEventDetails = (event: GedcomEvent, level: number) => {
+    if (event.date?.raw) lines.push(`${level} DATE ${event.date.raw}`)
+    if (event.place) lines.push(`${level} PLAC ${event.place}`)
+    if (event.cause) lines.push(`${level} CAUS ${event.cause}`)
+    if (event.age) lines.push(`${level} AGE ${event.age}`)
+    if (event.description) lines.push(`${level} NOTE ${event.description}`)
+    const [latitude, longitude] = event.coordinates || []
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      lines.push(`${level} MAP`)
+      lines.push(`${level + 1} LATI ${Math.abs(latitude!).toFixed(6)}${latitude! < 0 ? 'S' : 'N'}`)
+      lines.push(`${level + 1} LONG ${Math.abs(longitude!).toFixed(6)}${longitude! < 0 ? 'W' : 'E'}`)
+    }
+  }
   
   // Header
   lines.push(`0 HEAD`)
@@ -777,16 +840,13 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
       const event = individual[key as keyof GedcomIndividual] as GedcomEvent | undefined
       if (event) {
         lines.push(`1 ${tag}`)
-        if (event.date?.raw) lines.push(`2 DATE ${event.date.raw}`)
-        if (event.place) lines.push(`2 PLAC ${event.place}`)
+        appendEventDetails(event, 2)
       }
     }
     
     for (const event of individual.events) {
-      lines.push(`1 EVEN`)
-      if (event.type) lines.push(`2 TYPE ${event.type}`)
-      if (event.date?.raw) lines.push(`2 DATE ${event.date.raw}`)
-      if (event.place) lines.push(`2 PLAC ${event.place}`)
+      lines.push(`1 ${event.type}`)
+      appendEventDetails(event, 2)
     }
     
     // Notes
@@ -819,8 +879,15 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     // Marriage
     if (family.marriage) {
       lines.push(`1 MARR`)
-      if (family.marriage.date?.raw) lines.push(`2 DATE ${family.marriage.date.raw}`)
-      if (family.marriage.place) lines.push(`2 PLAC ${family.marriage.place}`)
+      appendEventDetails(family.marriage, 2)
+    }
+    if (family.divorce) {
+      lines.push(`1 DIV`)
+      appendEventDetails(family.divorce, 2)
+    }
+    for (const engagement of family.engagements || []) {
+      lines.push(`1 ENGA`)
+      appendEventDetails(engagement, 2)
     }
     
     // Notes
@@ -1183,10 +1250,8 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
     
     for (const { key, type } of eventTypes) {
       const event = individual[key] as GedcomEvent | undefined
-      if (event && event.place) {
-        const coordinates: LngLat = event.coordinates && !isNaN(event.coordinates[0]) && !isNaN(event.coordinates[1])
-          ? [event.coordinates[0], event.coordinates[1]]
-          : [0, 0]
+      if (event?.coordinates && !isNaN(event.coordinates[0]) && !isNaN(event.coordinates[1])) {
+        const coordinates: LngLat = [event.coordinates[0], event.coordinates[1]]
         
         events.push({
           id: `${xrefId}_${type}`,
@@ -1194,7 +1259,7 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
           personName: fullName,
           type,
           date: event.date?.raw || '',
-          place: event.place,
+          place: event.place || '',
           description: '',
           coordinates,
           color: EVENT_COLORS[type] || '#9E9E9E',
@@ -1206,10 +1271,8 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
     
     // Process custom events
     for (const event of individual.events) {
-      if (event.place) {
-        const coordinates: LngLat = event.coordinates && !isNaN(event.coordinates[0]) && !isNaN(event.coordinates[1])
-          ? [event.coordinates[0], event.coordinates[1]]
-          : [0, 0]
+      if (event.coordinates && !isNaN(event.coordinates[0]) && !isNaN(event.coordinates[1])) {
+        const coordinates: LngLat = [event.coordinates[0], event.coordinates[1]]
         
         events.push({
           id: `${xrefId}_${event.type}_${events.length}`,
@@ -1217,7 +1280,7 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
           personName: fullName,
           type: event.type,
           date: event.date?.raw || '',
-          place: event.place,
+          place: event.place || '',
           description: event.description || '',
           coordinates,
           color: EVENT_COLORS[event.type] || '#9E9E9E',
@@ -1226,6 +1289,28 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
         })
       }
     }
+  }
+
+  for (const family of file.families.values()) {
+    const event = family.marriage
+    const personId = family.husband || family.wife
+    const person = personId ? file.individuals.get(personId) : undefined
+    if (!event?.coordinates || !personId || !person) continue
+    const spouseId = family.husband === personId ? family.wife : family.husband
+    const spouseName = spouseId ? file.individuals.get(spouseId)?.names[0]?.full : undefined
+    events.push({
+      id: `${family.xrefId}_MARR`,
+      personId,
+      personName: spouseName ? `${person.names[0]?.full || personId} & ${spouseName}` : person.names[0]?.full || personId,
+      type: 'MARR',
+      date: event.date?.raw || '',
+      place: event.place || '',
+      description: 'Marriage',
+      coordinates: [event.coordinates[0], event.coordinates[1]],
+      color: EVENT_COLORS.MARR,
+      icon: EVENT_ICONS.MARR,
+      clusterId: family.xrefId,
+    })
   }
   
   return events

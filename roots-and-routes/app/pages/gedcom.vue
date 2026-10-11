@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~/composables/useGedcomStore'
+import type { DuplicateChoice } from '~/composables/useGedcomStore'
+import type { GedcomFile } from '~/types/gedcom'
+import { parseGedcom, writeGedcom } from '~/utils/gedcom/parser'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -15,6 +18,10 @@ const isUploading = ref(false)
 const uploadError = ref<string | null>(null)
 const uploadSuccess = ref(false)
 const fileInfo = ref<any>(null)
+const importMode = ref<'replace' | 'merge'>('replace')
+const pendingGedcom = ref<GedcomFile | null>(null)
+const pendingDuplicates = ref<ReturnType<typeof gedcomStore.findDuplicatePeople>>([])
+const duplicateChoices = ref<Record<string, DuplicateChoice>>({})
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes'
@@ -44,8 +51,6 @@ const handleFile = async (file: File) => {
   uploadSuccess.value = false
   uploadProgress.value = 0
   isUploading.value = true
-  gedcomStore.clear()
-  
   if (!file.name.match(/\.(ged|GED|gedcom|GEDCOM)$/)) {
     uploadError.value = 'Please select a GEDCOM file (.ged or .gedcom)'
     isUploading.value = false
@@ -83,7 +88,18 @@ const handleFile = async (file: File) => {
           throw new Error('Invalid GEDCOM content')
         }
         
-        // Parse using our GEDCOM parser
+        if (importMode.value === 'merge' && gedcomStore.hasData) {
+          const preview = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+          pendingGedcom.value = preview.file
+          pendingDuplicates.value = gedcomStore.findDuplicatePeople(preview.file)
+          duplicateChoices.value = Object.fromEntries(
+            pendingDuplicates.value.map(duplicate => [duplicate.incomingXref, 'combine']),
+          ) as Record<string, DuplicateChoice>
+          uploadProgress.value = 100
+          isUploading.value = false
+          return
+        }
+
         const parseResult = await gedcomStore.parseFile(content)
         
         if (!parseResult) {
@@ -138,6 +154,40 @@ const clearData = () => {
   uploadProgress.value = 0
 }
 
+const applyMerge = async () => {
+  if (!pendingGedcom.value) return
+  isUploading.value = true
+  uploadError.value = null
+  try {
+    await gedcomStore.mergeFile(pendingGedcom.value, duplicateChoices.value)
+    pendingGedcom.value = null
+    pendingDuplicates.value = []
+    uploadSuccess.value = true
+  } catch (error: any) {
+    uploadError.value = error.message || 'Failed to merge GEDCOM data'
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const cancelMerge = () => {
+  pendingGedcom.value = null
+  pendingDuplicates.value = []
+  duplicateChoices.value = {}
+}
+
+const exportGedcom = () => {
+  const file = gedcomStore.state.value.file
+  if (!file) return
+  const blob = new Blob([writeGedcom(file)], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'roots-and-routes.ged'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const viewOnMap = () => router.push('/map')
 const viewTree = () => router.push('/tree')
 </script>
@@ -190,6 +240,35 @@ const viewTree = () => router.push('/tree')
       </div>
       
       <div class="space-y-4">
+        <div class="flex items-center justify-between gap-4 p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+          <label for="import-mode" class="font-medium">When importing</label>
+          <select id="import-mode" v-model="importMode" class="px-3 py-2 rounded border bg-transparent">
+            <option value="replace">Replace current tree</option>
+            <option value="merge" :disabled="!gedcomStore.hasData">Merge into current tree</option>
+          </select>
+        </div>
+
+        <section v-if="pendingGedcom" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+          <h2 class="font-bold text-lg mb-1">Review GEDCOM merge</h2>
+          <p class="text-sm opacity-75 mb-4">
+            {{ pendingGedcom.individuals.size }} incoming people; {{ pendingDuplicates.length }} possible duplicates.
+          </p>
+          <div v-if="pendingDuplicates.length" class="max-h-72 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700">
+            <label v-for="duplicate in pendingDuplicates" :key="duplicate.incomingXref" class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 py-3 text-sm">
+              <span>{{ duplicate.incomingName }} <span class="opacity-60">matches {{ duplicate.existingName }}</span></span>
+              <select v-model="duplicateChoices[duplicate.incomingXref]" class="px-2 py-1 rounded border bg-transparent">
+                <option value="combine">Combine records</option>
+                <option value="existing">Keep current record</option>
+                <option value="incoming">Use incoming record</option>
+              </select>
+            </label>
+          </div>
+          <div class="flex gap-3 mt-5">
+            <button @click="applyMerge" class="px-4 py-2 rounded bg-primary-600 text-white">Merge data</button>
+            <button @click="cancelMerge" class="px-4 py-2 rounded border">Cancel</button>
+          </div>
+        </section>
+
         <div v-if="isUploading" class="p-6 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <h3 class="font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
             Processing File
@@ -267,6 +346,18 @@ const viewTree = () => router.push('/tree')
               class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
             >
               View Tree
+            </button>
+            <button
+              @click="exportGedcom"
+              class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
+            >
+              Export GEDCOM
+            </button>
+            <button
+              @click="clearData"
+              class="px-4 py-2 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg text-sm font-medium"
+            >
+              Clear
             </button>
           </div>
         </div>

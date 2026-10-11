@@ -21,6 +21,10 @@ const showDeath = ref(true)
 const showOther = ref(true)
 const showMigration = ref(false)
 const showClusters = ref(true)
+const selectedPersonId = ref('')
+const personScope = ref<'all' | 'person' | 'family'>('all')
+const startYear = ref('')
+const endYear = ref('')
 
 const selectedEvent = ref<MapEvent | null>(null)
 const infoWindowPosition = ref<[number, number] | null>(null)
@@ -61,13 +65,38 @@ const categoryFilters = computed<Record<EventCategory, boolean>>(() => ({
   other: showOther.value
 }))
 
+const filteredPersonIds = computed(() => {
+  const file = gedcomStore.state.value.file
+  if (!file || !selectedPersonId.value || personScope.value === 'all') return null
+  const included = new Set([selectedPersonId.value])
+  if (personScope.value === 'family') {
+    const queue = [selectedPersonId.value]
+    while (queue.length) {
+      const personId = queue.shift()!
+      const person = file.individuals.get(personId)
+      for (const familyId of person?.familiesAsSpouse || []) {
+        for (const childId of file.families.get(familyId)?.children || []) {
+          if (!included.has(childId)) {
+            included.add(childId)
+            queue.push(childId)
+          }
+        }
+      }
+    }
+  }
+  return included
+})
+
 const filteredEvents = computed(() => {
   return mapEvents.value.filter(event => {
     const config = eventTypeConfig[event.type as keyof typeof eventTypeConfig]
-    if (!config) return true
-    
-    const category = config.category as EventCategory
-    return categoryFilters.value[category]
+    if (config && !categoryFilters.value[config.category as EventCategory]) return false
+    if (filteredPersonIds.value && !filteredPersonIds.value.has(event.personId)) return false
+    const yearText = event.date?.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0]
+    const year = yearText ? Number(yearText) : null
+    if (startYear.value && (year === null || year < Number(startYear.value))) return false
+    if (endYear.value && (year === null || year > Number(endYear.value))) return false
+    return true
   })
 })
 
@@ -157,6 +186,9 @@ const addMigrationLines = () => {
     // Sort events by date if possible, otherwise by coordinates
     const sortedEvents = [...events].sort((a, b) => {
       if (a.date && b.date) {
+        const yearA = Number(a.date.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0])
+        const yearB = Number(b.date.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0])
+        if (yearA && yearB) return yearA - yearB
         return a.date.localeCompare(b.date)
       }
       return 0
@@ -265,6 +297,27 @@ onUnmounted(() => {
               <input v-model="showMigration" type="checkbox" class="mr-3">
               <span :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">Migration Lines</span>
             </label>
+          </div>
+          <div class="mt-5 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label class="block text-sm font-medium">Person or family branch
+              <select v-model="selectedPersonId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+                <option value="">Choose a person</option>
+                <option v-for="person in gedcomStore.getAllAppPersons()" :key="person.id" :value="person.id">{{ person.fullName }}</option>
+              </select>
+            </label>
+            <select v-model="personScope" class="w-full rounded border px-3 py-2 bg-transparent" :disabled="!selectedPersonId">
+              <option value="all">All people</option>
+              <option value="person">Selected person</option>
+              <option value="family">Selected person's descendants</option>
+            </select>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="text-sm">From year
+                <input v-model="startYear" type="number" min="1" max="2100" placeholder="Any" class="mt-1 w-full rounded border px-2 py-2 bg-transparent">
+              </label>
+              <label class="text-sm">To year
+                <input v-model="endYear" type="number" min="1" max="2100" placeholder="Any" class="mt-1 w-full rounded border px-2 py-2 bg-transparent">
+              </label>
+            </div>
           </div>
         </div>
         

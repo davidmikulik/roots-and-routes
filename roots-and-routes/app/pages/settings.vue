@@ -182,6 +182,10 @@ const router = useRouter()
             <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               General Settings
             </h2>
+
+            <NuxtLink to="/admin/locations" class="mb-6 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600">
+              Manage known locations
+            </NuxtLink>
             
             <div class="space-y-4">
               <div class="grid grid-cols-3 gap-4">

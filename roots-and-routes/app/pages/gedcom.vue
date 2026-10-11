@@ -3,7 +3,16 @@ import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import type { DuplicateChoice } from '~~/composables/useGedcomStore'
 import type { GedcomFile } from '~~/types/gedcom'
+import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom } from '~~/utils/gedcom/parser'
+import { applyKnownLocations } from '~~/utils/gedcom/locations'
+
+interface GedcomImportResponse {
+  data: {
+    file: { id: string }
+    locations: { unique: string[]; matched: KnownLocation[]; unresolved: string[] }
+  }
+}
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -22,6 +31,7 @@ const importMode = ref<'replace' | 'merge'>('replace')
 const pendingGedcom = ref<GedcomFile | null>(null)
 const pendingDuplicates = ref<ReturnType<typeof gedcomStore.findDuplicatePeople>>([])
 const duplicateChoices = ref<Record<string, DuplicateChoice>>({})
+const unresolvedLocations = ref<string[]>([])
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes'
@@ -87,9 +97,18 @@ const handleFile = async (file: File) => {
         if (!isValidGedcom) {
           throw new Error('Invalid GEDCOM content')
         }
+
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await $fetch<GedcomImportResponse>('/api/gedcom/import', {
+          method: 'POST',
+          body: formData,
+        })
+        unresolvedLocations.value = response.data.locations.unresolved
         
         if (importMode.value === 'merge' && gedcomStore.hasData) {
           const preview = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+          applyKnownLocations(preview.file, response.data.locations.matched)
           pendingGedcom.value = preview.file
           pendingDuplicates.value = gedcomStore.findDuplicatePeople(preview.file)
           duplicateChoices.value = Object.fromEntries(
@@ -100,7 +119,7 @@ const handleFile = async (file: File) => {
           return
         }
 
-        const parseResult = await gedcomStore.parseFile(content)
+        const parseResult = await gedcomStore.parseFile(content, response.data.file.id, undefined, response.data.locations.matched)
         
         if (!parseResult) {
           throw new Error('Failed to parse GEDCOM file')
@@ -332,6 +351,12 @@ const viewTree = () => router.push('/tree')
               <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Parsing Time:</span>
               <span class="font-medium">{{ gedcomStore.state.value.parseResult?.stats.parsingTime || 0 }}ms</span>
             </div>
+          </div>
+
+          <div v-if="unresolvedLocations.length" class="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+            <p class="font-medium">{{ unresolvedLocations.length }} places have no coordinates yet.</p>
+            <p class="mt-1">{{ unresolvedLocations.slice(0, 8).join(', ') }}{{ unresolvedLocations.length > 8 ? ', ?' : '' }}</p>
+            <NuxtLink to="/admin/locations" class="mt-2 inline-block underline">Edit known locations</NuxtLink>
           </div>
           
           <div class="flex gap-3 mt-6">

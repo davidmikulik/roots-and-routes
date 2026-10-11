@@ -1,6 +1,8 @@
 import { computed, onMounted } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
+import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
+import { applyKnownLocations } from '~~/utils/gedcom/locations'
 
 interface GedcomState {
   file: GedcomFile | null
@@ -187,16 +189,17 @@ export const useGedcomStore = () => {
     }
   }
 
-  const parseFile = async (content: string, fileId?: string, userId?: string): Promise<GedcomParseResult | null> => {
+  const parseFile = async (content: string, fileId?: string, userId?: string, knownLocations: KnownLocation[] = []): Promise<GedcomParseResult | null> => {
     state.value.isLoading = true
     state.value.error = null
 
     try {
       const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+      applyKnownLocations(result.file, knownLocations)
       setFile(result.file, result, fileId, userId)
       if (import.meta.client) {
         try {
-          await saveContent(content)
+          await saveContent(writeGedcom(result.file))
         } catch (error) {
           console.error('GEDCOM imported but could not be saved locally:', error)
           state.value.error = 'Import succeeded, but local browser storage could not save a backup.'

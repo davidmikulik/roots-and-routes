@@ -1,6 +1,8 @@
 // GEDCOM Import API Endpoint
 import { parseGedcom } from '~~/utils/gedcom/parser'
+import { applyKnownLocations, getUniqueGedcomLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
 import { uploadGedcomFile, saveParsedGedcom, validateFileSize, isGedcomFile } from '~~/server/utils/storage'
+import { loadKnownLocations } from '~~/server/utils/locationStorage'
 import type { GedcomParseResult, UploadedFile } from '~~/types'
 
 export default defineEventHandler(async (event) => {
@@ -20,10 +22,24 @@ export default defineEventHandler(async (event) => {
     const fileText = Buffer.from(file).toString('utf8')
     const isValidGedcom = fileText.includes('0 HEAD') || fileText.includes('0 @') || fileText.match(/\b(INDI|FAM|SOUR)\b/)
     if (!isValidGedcom) throw createError({ statusCode: 400, statusMessage: 'Invalid GEDCOM content' })
-    const parseResult: GedcomParseResult = parseGedcom(fileText)
+    const parseResult: GedcomParseResult = parseGedcom(fileText, { resolveXrefs: true, extractCoordinates: true })
+    const uniqueLocations = getUniqueGedcomLocations(parseResult.file)
+    const knownLocations = await loadKnownLocations()
+    const matchedLocations = applyKnownLocations(parseResult.file, knownLocations)
+    const matchedNames = new Set(matchedLocations.map(location => normalizeLocationName(location.name)))
+    const unresolvedLocations = uniqueLocations.filter(location => !matchedNames.has(normalizeLocationName(location)))
     const uploadedFile: UploadedFile = await uploadGedcomFile(Buffer.from(file), filename, { overwrite: false })
     await saveParsedGedcom(parseResult.file, uploadedFile.id)
-    return { success: true, message: 'GEDCOM file imported successfully', data: { file: uploadedFile, parseResult }, timestamp: new Date().toISOString() }
+    return {
+      success: true,
+      message: 'GEDCOM file imported successfully',
+      data: {
+        file: uploadedFile,
+        parseResult,
+        locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations },
+      },
+      timestamp: new Date().toISOString(),
+    }
   } catch (error: any) {
     console.error('GEDCOM import error:', error)
     throw createError({ statusCode: error.statusCode || 500, statusMessage: error.statusMessage || 'Internal Server Error', message: error.message || 'Failed to import GEDCOM file', fatal: error.fatal })

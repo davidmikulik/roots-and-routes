@@ -2,6 +2,7 @@
 import type { H3Event } from 'h3'
 
 export default defineEventHandler((event: H3Event) => {
+  if (getRequestURL(event).pathname === '/api/admin/locations') return
   const config = useRuntimeConfig()
   const apiToken = config.public?.apiToken || process.env.API_TOKEN
   if (!apiToken) return

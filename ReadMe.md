@@ -45,13 +45,14 @@ Backend (Doporučeno):
 
 Nuxt Server Routes (Nitro engine) – jelikož používáte Nuxt, nejjednodušší, nejčistší a nejvýkonnější backend je přímo jeho vestavěný Nitro server. Na Vercel se automaticky deployuje jako série Serverless Functions, takže neplatíte za žádný běžící server.
 
-Databáze:
 
-MongoDB (např. cloudová MongoDB Atlas ve Free tieru) s ODM Mongoose pro správu schémat osob, rodin a událostí.
+Úložiště dat (Storage):
+
+Vercel Blob – nativní objektové úložiště od Vercelu pro ukládání nahraných GEDCOM souborů a parsovaných JSON databází rodokmenu.
 
 Mapová knihovna:
 
-Leaflet.js (např. přes vue-leaflet) nebo MapLibre GL nad podklady OpenStreetMap.
+MapLibre GL (např. přes vue-leaflet) nebo MapLibre GL nad podklady OpenStreetMap.
 
 Hosting & Deployment:
 

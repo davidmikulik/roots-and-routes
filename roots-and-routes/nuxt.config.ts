@@ -72,7 +72,6 @@ export default defineNuxtConfig({
     serverAssets: [
       {
         dir: '~/assets',
-        maxAge: 86400,
       },
     ],
     compress: {
@@ -84,9 +83,6 @@ export default defineNuxtConfig({
       functions: {
         memory: 3008,
         maxDuration: 60,
-      },
-      edge: {
-        enabled: false,
       },
     },
   },

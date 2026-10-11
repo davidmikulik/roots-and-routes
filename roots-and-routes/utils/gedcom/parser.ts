@@ -1,5 +1,5 @@
 // Custom GEDCOM Parser - Complete implementation
-import type { LngLat } from 'leaflet'
+import type { LatLngTuple as LngLat } from 'leaflet'
 import type {
   GedcomFile, GedcomLine, GedcomIndividual, GedcomFamily, GedcomName,
   GedcomEvent, GedcomDate, GedcomSource, GedcomSourceCitation, GedcomRepository,
@@ -9,7 +9,7 @@ import type {
 } from '~/types/gedcom'
 
 // Constants
-const DEFAULT_OPTIONS: GedcomParseOptions = { maxLines: 0, parseBinary: false, resolveXrefs: true, extractCoordinates: false }
+const DEFAULT_OPTIONS: GedcomParseOptions = { maxLines: 0, resolveXrefs: true, extractCoordinates: false }
 const MONTHS: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 }
 const CZECH_MONTHS: Record<string, number> = { LEDEN: 0, ÚNOR: 1, BŘEZEN: 2, DUBEN: 3, KVĚTEN: 4, ČERVEN: 5, ČERVENEC: 6, SRPEN: 7, ZÁŘÍ: 8, ŘÍJEN: 9, LISTOPAD: 10, PROSINEC: 11 }
 const RECORD_TAGS = ['INDI', 'FAM', 'SOUR', 'REPO', 'NOTE', 'OBJE', 'SUBM', 'HEAD', 'TRLR']

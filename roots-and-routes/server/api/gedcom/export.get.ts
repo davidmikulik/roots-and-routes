@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
           multimedia: new Map(gedcomFile.multimedia),
           notes: new Map(gedcomFile.notes),
         }
-        const gedcomContent = writeGedcom(exportFile, { version: '5.5', encoding: 'UTF-8', application: 'Roots & Routes' })
+        const gedcomContent = writeGedcom(exportFile, { version: '5.5', encoding: 'UTF-8' })
         const exportedFile = await saveExportedGedcom(gedcomContent, `export_${Date.now()}.ged`, userId)
         return { success: true, message: 'GEDCOM export completed', data: { format: 'gedcom', url: exportedFile.url, size: exportedFile.size, filename: exportedFile.name, fileId: exportedFile.id }, timestamp: new Date().toISOString() }
       case 'json':

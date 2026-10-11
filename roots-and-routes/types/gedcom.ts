@@ -1,5 +1,5 @@
 // GEDCOM Type Definitions
-import type { LngLat } from 'leaflet'
+import type { LatLngTuple as LngLat } from 'leaflet'
 
 export interface GedcomLine {
   level: number
@@ -94,8 +94,8 @@ export interface GedcomDate {
   day?: number
   month?: number | string
   year?: number
-  date1?: Date
-  date2?: Date
+  date1?: Date | null
+  date2?: Date | null
   range?: boolean
   from?: boolean
   to?: boolean

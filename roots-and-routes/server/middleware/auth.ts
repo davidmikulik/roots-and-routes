@@ -46,7 +46,8 @@ export function optionalAuth(handler: (event: H3Event, userId: string | null) =>
 
 export function extractApiKey(event: H3Event): string | null {
   const authHeader = getHeader(event, 'authorization')
-  return authHeader?.replace('Bearer ', '') || getQuery(event).token || null
+  const queryToken = getQuery(event).token
+  return authHeader?.replace('Bearer ', '') || (typeof queryToken === 'string' ? queryToken : null)
 }
 
 export function validateApiKey(event: H3Event): boolean {

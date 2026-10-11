@@ -1,5 +1,5 @@
 // Vercel Blob Storage Utilities
-import { put, get, del, list, head } from '@vercel/blob'
+import { put, del, list, head } from '@vercel/blob'
 import type { GedcomFile, GedcomParseResult, UploadedFile } from '~/types'
 
 const config = useRuntimeConfig()
@@ -12,8 +12,7 @@ export async function uploadGedcomFile(file: Buffer | string, filename: string, 
   const uniqueId = crypto.randomUUID()
   const storageFilename = userId ? `${getUploadDir()}/${userId}/${uniqueId}.${extension}` : `${getUploadDir()}/${uniqueId}.${extension}`
   let content: Buffer | string = typeof file === 'string' ? file : file
-  await put(storageFilename, content, { token: getBlobToken(), addRandomSuffix: !overwrite, ...metadata })
-  const blob = await get(storageFilename, { token: getBlobToken() })
+  const blob = await put(storageFilename, content, { access: 'public', token: getBlobToken(), addRandomSuffix: !overwrite, allowOverwrite: overwrite, ...metadata })
   const size = typeof file === 'string' ? Buffer.byteLength(content as string) : (content as Buffer).byteLength
   return {
     id: uniqueId, name: filename, originalName: filename, size,
@@ -24,13 +23,17 @@ export async function uploadGedcomFile(file: Buffer | string, filename: string, 
 }
 
 export async function downloadFile(path: string): Promise<Buffer> {
-  const blob = await get(path, { token: getBlobToken() })
-  return Buffer.from(await blob.arrayBuffer())
+  const blob = await head(path, { token: getBlobToken() })
+  const response = await fetch(blob.url)
+  if (!response.ok) throw new Error(`Failed to download blob: ${response.statusText}`)
+  return Buffer.from(await response.arrayBuffer())
 }
 
 export async function getFileText(path: string): Promise<string> {
-  const blob = await get(path, { token: getBlobToken() })
-  return await blob.text()
+  const blob = await head(path, { token: getBlobToken() })
+  const response = await fetch(blob.url)
+  if (!response.ok) throw new Error(`Failed to download blob: ${response.statusText}`)
+  return await response.text()
 }
 
 export async function getFileMetadata(path: string) {
@@ -42,22 +45,22 @@ export async function deleteFile(path: string): Promise<boolean> {
 }
 
 export async function listFiles(prefix: string = ''): Promise<string[]> {
-  const { objects } = await list({ prefix, token: getBlobToken() })
-  return objects.map(obj => obj.path)
+  const { blobs } = await list({ prefix, token: getBlobToken() })
+  return blobs.map(blob => blob.pathname)
 }
 
 export async function listUserFiles(userId?: string): Promise<UploadedFile[]> {
   const prefix = userId ? `${getUploadDir()}/${userId}` : getUploadDir()
-  const { objects } = await list({ prefix, token: getBlobToken() })
-  return objects.map(obj => ({
-    id: obj.path.split('/').pop()?.replace('.ged', '').replace('.gedcom', '') || '',
-    name: obj.path.split('/').pop() || '',
-    originalName: (obj.metadata?.originalName as string) || obj.path.split('/').pop() || '',
-    size: obj.size, mimeType: obj.contentType || 'application/octet-stream',
-    extension: obj.path.endsWith('.ged') ? 'ged' : 'gedcom',
-    path: obj.path, url: obj.url,
-    createdAt: obj.uploadedAt ? new Date(obj.uploadedAt) : new Date(),
-    updatedAt: obj.uploadedAt ? new Date(obj.uploadedAt) : new Date(),
+  const { blobs } = await list({ prefix, token: getBlobToken() })
+  return blobs.map(blob => ({
+    id: blob.pathname.split('/').pop()?.replace('.ged', '').replace('.gedcom', '') || '',
+    name: blob.pathname.split('/').pop() || '',
+    originalName: blob.pathname.split('/').pop() || '',
+    size: blob.size, mimeType: 'application/octet-stream',
+    extension: blob.pathname.endsWith('.ged') ? 'ged' : 'gedcom',
+    path: blob.pathname, url: blob.url,
+    createdAt: blob.uploadedAt ? new Date(blob.uploadedAt) : new Date(),
+    updatedAt: blob.uploadedAt ? new Date(blob.uploadedAt) : new Date(),
     uploadedBy: userId, status: 'ready',
   }))
 }
@@ -69,7 +72,7 @@ export async function fileExists(path: string): Promise<boolean> {
 export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?: string): Promise<string> {
   const jsonString = JSON.stringify(data)
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
-  await put(path, jsonString, { token: getBlobToken(), contentType: 'application/json' })
+  await put(path, jsonString, { access: 'public', token: getBlobToken(), contentType: 'application/json' })
   return path
 }
 
@@ -81,8 +84,7 @@ export async function loadParsedGedcom(fileId: string, userId?: string): Promise
 export async function saveExportedGedcom(content: string, filename: string, userId?: string): Promise<UploadedFile> {
   const uniqueId = crypto.randomUUID()
   const path = userId ? `${getUploadDir()}/${userId}/exports/${uniqueId}.ged` : `${getUploadDir()}/exports/${uniqueId}.ged`
-  await put(path, content, { token: getBlobToken(), contentType: 'application/octet-stream' })
-  const blob = await get(path, { token: getBlobToken() })
+  const blob = await put(path, content, { access: 'public', token: getBlobToken(), contentType: 'application/octet-stream' })
   return {
     id: uniqueId, name: filename, originalName: filename, size: content.length,
     mimeType: 'application/octet-stream', extension: 'ged', path, url: blob.url,

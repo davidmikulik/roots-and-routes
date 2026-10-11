@@ -20,6 +20,7 @@ const settings = ref({
     maxGenerations: 10,
   },
   data: {
+    language: 'en',
     autoSave: true,
     backupOnImport: true,
     backupCount: 5,
@@ -62,6 +63,7 @@ const resetToDefaults = () => {
       maxGenerations: 10,
     },
     data: {
+      language: 'en',
       autoSave: true,
       backupOnImport: true,
       backupCount: 5,

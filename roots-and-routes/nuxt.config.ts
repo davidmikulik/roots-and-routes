@@ -74,10 +74,6 @@ export default defineNuxtConfig({
         dir: '~/assets',
       },
     ],
-    compress: {
-      enabled: true,
-      level: 6,
-    },
     vercel: {
       regions: ['iad1'],
       functions: {

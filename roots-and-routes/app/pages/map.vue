@@ -54,12 +54,12 @@ const eventTypeConfig = {
 
 type EventCategory = 'birth' | 'marriage' | 'death' | 'other'
 
-const categoryFilters: Record<EventCategory, boolean> = {
-  birth: showBirth,
-  marriage: showMarriage,
-  death: showDeath,
-  other: showOther
-}
+const categoryFilters = computed<Record<EventCategory, boolean>>(() => ({
+  birth: showBirth.value,
+  marriage: showMarriage.value,
+  death: showDeath.value,
+  other: showOther.value
+}))
 
 const filteredEvents = computed(() => {
   return mapEvents.value.filter(event => {
@@ -67,7 +67,7 @@ const filteredEvents = computed(() => {
     if (!config) return true
     
     const category = config.category as EventCategory
-    return categoryFilters[category]
+    return categoryFilters.value[category]
   })
 })
 

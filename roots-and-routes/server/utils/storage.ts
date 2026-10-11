@@ -12,7 +12,7 @@ export async function uploadGedcomFile(file: Buffer | string, filename: string, 
   const uniqueId = crypto.randomUUID()
   const storageFilename = userId ? `${getUploadDir()}/${userId}/${uniqueId}.${extension}` : `${getUploadDir()}/${uniqueId}.${extension}`
   let content: Buffer | string = typeof file === 'string' ? file : file
-  const blob = await put(storageFilename, content, { access: 'public', token: getBlobToken(), addRandomSuffix: !overwrite, allowOverwrite: overwrite, ...metadata })
+  const blob = await put(storageFilename, content, { access: 'public', token: getBlobToken(), addRandomSuffix: !overwrite, ...metadata })
   const size = typeof file === 'string' ? Buffer.byteLength(content as string) : (content as Buffer).byteLength
   return {
     id: uniqueId, name: filename, originalName: filename, size,

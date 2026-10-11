@@ -1,0 +1,44 @@
+{
+  "extends": "./.output/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["*"],
+      "@/*": ["*"],
+      "~//*": ["*"],
+      "@//*": ["*"],
+      "#app/*": ["app/*"],
+      "#imports": [".nuxt/imports"]
+    },
+    "types": ["vite/client", "leaflet"]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.vue",
+    "**/*.d.ts",
+    "nuxt.config.ts",
+    "app.vue",
+    ".nuxt/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".output",
+    "dist",
+    "*.config.js",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
+  "references": [{ "path": "./.output/tsconfig.json" }]
+}

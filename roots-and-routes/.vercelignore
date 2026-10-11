@@ -1,0 +1,32 @@
+# Dependencies
+node_modules
+
+# Build outputs
+.output
+.cache
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp
+temp
+
+# Git
+.git
+.gitignore

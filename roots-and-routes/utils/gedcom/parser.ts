@@ -718,7 +718,7 @@ class GedcomParser {
     for (const individual of file.individuals.values()) {
       const events = [individual.birth, individual.baptism, individual.christening, individual.death, individual.burial, individual.cremation, ...individual.events]
       for (const event of events) {
-        if (event.coordinates) {
+        if (event?.coordinates) {
           if (!file.metadata.minLat || event.coordinates[0] < file.metadata.minLat) {
             file.metadata.minLat = event.coordinates[0]
           }

@@ -2,7 +2,7 @@
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~/composables/useGedcomStore'
 import type { IndividualDraft } from '~/composables/useGedcomStore'
-import type { AppPerson, FamilyTree } from '~/types/gedcom'
+import type { AppPerson, FamilyTree, GedcomEvent } from '~/types/gedcom'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -139,8 +139,8 @@ const formatDateInput = (date?: Date | null): string => date && !Number.isNaN(da
 const openPersonEditor = (person?: AppPerson) => {
   const individual = person ? gedcomStore.individuals.value.get(person.id) : undefined
   const file = gedcomStore.state.value.file
-  const parentFamily = individual?.familiesAsChild.map(id => file?.families.get(id)).find(Boolean)
-  const partnerFamily = individual?.familiesAsSpouse.map(id => file?.families.get(id)).find(Boolean)
+  const parentFamily = individual?.familiesAsChild.map((id: string) => file?.families.get(id)).find(Boolean)
+  const partnerFamily = individual?.familiesAsSpouse.map((id: string) => file?.families.get(id)).find(Boolean)
   const firstPartner = partnerFamily
     ? partnerFamily.husband === individual?.xrefId ? partnerFamily.wife : partnerFamily.husband
     : ''
@@ -165,7 +165,7 @@ const openPersonEditor = (person?: AppPerson) => {
     marriagePlace: partnerFamily?.marriage?.place || '',
     marriageLatitude: partnerFamily?.marriage?.coordinates?.[0]?.toString() || '',
     marriageLongitude: partnerFamily?.marriage?.coordinates?.[1]?.toString() || '',
-    events: individual.events.map(event => ({
+    events: individual.events.map((event: GedcomEvent) => ({
       type: event.type, date: formatDateInput(event.date?.parsed), existingDate: event.date, place: event.place || '',
       latitude: event.coordinates?.[0]?.toString() || '', longitude: event.coordinates?.[1]?.toString() || '',
       description: event.description || '',

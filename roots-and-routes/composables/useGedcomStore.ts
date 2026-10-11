@@ -238,7 +238,7 @@ export const useGedcomStore = () => {
   const mergeFile = async (incoming: GedcomFile, choices: Record<string, DuplicateChoice> = {}): Promise<void> => {
     const current = state.value.file
     if (!current) {
-      const result: ParseResult = {
+      const result: GedcomParseResult = {
         file: incoming,
         warnings: [],
         errors: [],

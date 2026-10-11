@@ -2,9 +2,8 @@
 import { put, del, list, head } from '@vercel/blob'
 import type { GedcomFile, GedcomParseResult, UploadedFile } from '~~/types'
 
-const config = useRuntimeConfig()
-const getBlobToken = (): string => config.vercelBlob?.token || process.env.BLOB_READ_WRITE_TOKEN || ''
-const getUploadDir = (): string => config.gedcom?.uploadDir || 'uploads/gedcom'
+const getBlobToken = (): string => useRuntimeConfig().vercelBlob?.token || process.env.BLOB_READ_WRITE_TOKEN || ''
+const getUploadDir = (): string => useRuntimeConfig().gedcom?.uploadDir || 'uploads/gedcom'
 
 export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {
   const { userId, overwrite, metadata } = options

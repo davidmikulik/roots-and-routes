@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     if (!value || typeof value !== 'object') {
       throw createError({ statusCode: 400, statusMessage: 'Invalid location entry' })
     }
-    const entry = value as Partial<KnownLocation> & { latitude?: unknown; longitude?: unknown }
+    const entry = value as Record<string, unknown>
     const name = typeof entry.name === 'string' ? entry.name.trim().replace(/\s+/g, ' ') : ''
     const latitude = entry.latitude === '' ? null : entry.latitude
     const longitude = entry.longitude === '' ? null : entry.longitude

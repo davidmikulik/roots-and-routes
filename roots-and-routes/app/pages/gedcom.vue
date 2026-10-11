@@ -242,16 +242,16 @@ const viewTree = () => router.push('/tree')
               </div>
               <div class="flex justify-between">
                 <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Lines:</span>
-                <span class="font-medium">{{ gedcomStore.state.parseResult?.stats.linesProcessed || 0 }}</span>
+                <span class="font-medium">{{ gedcomStore.state.value.parseResult?.stats.linesProcessed || 0 }}</span>
               </div>
               <div class="flex justify-between">
                 <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Records:</span>
-                <span class="font-medium">{{ gedcomStore.state.parseResult?.stats.recordsCreated || 0 }}</span>
+                <span class="font-medium">{{ gedcomStore.state.value.parseResult?.stats.recordsCreated || 0 }}</span>
               </div>
             </div>
             <div class="flex justify-between">
               <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Parsing Time:</span>
-              <span class="font-medium">{{ gedcomStore.state.parseResult?.stats.parsingTime || 0 }}ms</span>
+              <span class="font-medium">{{ gedcomStore.state.value.parseResult?.stats.parsingTime || 0 }}ms</span>
             </div>
           </div>
           
@@ -271,12 +271,12 @@ const viewTree = () => router.push('/tree')
           </div>
         </div>
         
-        <div v-if="gedcomStore.state.error" class="p-4 rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-700">
+        <div v-if="gedcomStore.state.value.error" class="p-4 rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-700">
           <div class="flex items-center">
             <div class="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center mr-3">
               <span class="text-white">✕</span>
             </div>
-            <p class="text-red-800 dark:text-red-300">{{ gedcomStore.state.error }}</p>
+            <p class="text-red-800 dark:text-red-300">{{ gedcomStore.state.value.error }}</p>
           </div>
         </div>
         

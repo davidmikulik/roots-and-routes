@@ -32,6 +32,7 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxtjs/color-mode',
+    '@nuxtjs/tailwindcss',
   ],
 
   // Color mode for dark/light theme

@@ -36,7 +36,7 @@
     "prettier": "^3.2.5",
     "typescript": "^5.4.0",
     "vercel": "^35.0.0",
-    "vue-tsc": "^1.8.27"
+    "vue-tsc": "^3.3.13"
   },
   "engines": {
     "node": ">=18.0.0"

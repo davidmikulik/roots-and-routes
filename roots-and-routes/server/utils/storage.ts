@@ -10,8 +10,10 @@ export async function uploadGedcomFile(file: Buffer | string, filename: string, 
   const extension = filename.split('.').pop() || 'ged'
   const uniqueId = crypto.randomUUID()
   const storageFilename = userId ? `${getUploadDir()}/${userId}/${uniqueId}.${extension}` : `${getUploadDir()}/${uniqueId}.${extension}`
+  const token = getBlobToken()
+  if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
   let content: Buffer | string = typeof file === 'string' ? file : file
-  const blob = await put(storageFilename, content, { access: 'public', token: getBlobToken(), addRandomSuffix: !overwrite, ...metadata })
+  const blob = await put(storageFilename, content, { access: 'public', token, addRandomSuffix: !overwrite, ...metadata })
   const size = typeof file === 'string' ? Buffer.byteLength(content as string) : (content as Buffer).byteLength
   return {
     id: uniqueId, name: filename, originalName: filename, size,
@@ -69,9 +71,11 @@ export async function fileExists(path: string): Promise<boolean> {
 }
 
 export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?: string): Promise<string> {
+  const token = getBlobToken()
+  if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
   const jsonString = JSON.stringify(data)
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
-  await put(path, jsonString, { access: 'public', token: getBlobToken(), contentType: 'application/json' })
+  await put(path, jsonString, { access: 'public', token, contentType: 'application/json' })
   return path
 }
 

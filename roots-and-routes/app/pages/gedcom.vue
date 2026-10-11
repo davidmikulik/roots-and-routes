@@ -129,8 +129,9 @@ const handleFile = async (file: File) => {
         uploadSuccess.value = true
         isUploading.value = false
       } catch (error: any) {
-        uploadError.value = error.message
-        gedcomStore.setError(error.message)
+        const message = error.data?.statusMessage || error.message || 'GEDCOM import failed'
+        uploadError.value = message
+        gedcomStore.setError(message)
         isUploading.value = false
       }
     }
@@ -141,8 +142,9 @@ const handleFile = async (file: File) => {
     }
     reader.readAsText(file)
   } catch (error: any) {
-    uploadError.value = error.message
-    gedcomStore.setError(error.message)
+    const message = error.data?.statusMessage || error.message || 'GEDCOM import failed'
+    uploadError.value = message
+    gedcomStore.setError(message)
     isUploading.value = false
   }
 }

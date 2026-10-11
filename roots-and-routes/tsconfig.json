@@ -1,5 +1,5 @@
 {
-  "extends": "./.output/tsconfig.json",
+  "extends": "./.nuxt/tsconfig.json",
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
@@ -39,6 +39,5 @@
     "*.config.js",
     "**/*.spec.ts",
     "**/*.test.ts"
-  ],
-  "references": [{ "path": "./.output/tsconfig.json" }]
+  ]
 }

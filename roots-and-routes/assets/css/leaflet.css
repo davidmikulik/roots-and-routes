@@ -1,0 +1,65 @@
+/* Custom Leaflet CSS for Roots & Routes */
+.leaflet-container { width: 100%; height: 100%; background-color: var(--gray-100); }
+.dark .leaflet-container { background-color: var(--gray-800); }
+
+/* Hide default attribution */
+.leaflet-control-attribution { display: none !important; }
+
+/* Custom zoom controls */
+.leaflet-control-zoom { border-radius: 4px !important; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important; }
+.leaflet-control-zoom-in, .leaflet-control-zoom-out {
+  width: 36px !important; height: 36px !important; font-size: 20px !important;
+  color: var(--gray-700) !important; border: none !important; background-color: white !important;
+}
+.dark .leaflet-control-zoom-in, .dark .leaflet-control-zoom-out {
+  color: var(--gray-300) !important; background-color: var(--gray-800) !important;
+}
+.leaflet-control-zoom-in:hover, .leaflet-control-zoom-out:hover { background-color: var(--gray-50) !important; }
+.dark .leaflet-control-zoom-in:hover, .dark .leaflet-control-zoom-out:hover { background-color: var(--gray-700) !important; }
+
+/* Custom marker icons */
+.custom-marker-icon {
+  width: 32px !important; height: 32px !important; background-color: var(--event-birth) !important;
+  border-radius: 50% !important; display: flex !important; align-items: center !important;
+  justify-content: center !important; font-size: 18px !important; color: white !important;
+  border: 2px solid white !important; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  cursor: pointer !important; transition: transform 0.2s ease !important;
+}
+.custom-marker-icon:hover { transform: scale(1.2) !important; }
+
+/* Event type colors */
+.custom-marker-icon.birth, .custom-marker-icon.chr { background-color: var(--event-birth) !important; }
+.custom-marker-icon.death, .custom-marker-icon.buri, .custom-marker-icon.crem { background-color: var(--event-death) !important; }
+.custom-marker-icon.marr, .custom-marker-icon.enga, .custom-marker-icon.div { background-color: var(--event-marriage) !important; }
+
+/* Cluster markers */
+.marker-cluster div {
+  width: 32px !important; height: 32px !important; background-color: var(--primary-600) !important;
+  border-radius: 50% !important; display: flex !important; align-items: center !important;
+  justify-content: center !important; font-size: 14px !important; font-weight: bold !important;
+  color: white !important; border: 2px solid white !important; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+.marker-cluster:hover div { transform: scale(1.15) !important; }
+
+/* Polyline styles */
+.leaflet-polyline.migration {
+  stroke: var(--primary-500); stroke-width: 2; stroke-opacity: 0.7; stroke-dasharray: 5, 5; fill: none;
+}
+
+/* Popup styles */
+.leaflet-popup { border-radius: 8px !important; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important; padding: 0 !important; }
+.leaflet-popup-content { padding: 12px !important; min-width: 200px !important; }
+.dark .leaflet-popup-content { background-color: var(--gray-800) !important; color: var(--gray-100) !important; }
+
+/* Person marker with gender color */
+.person-marker {
+  width: 32px !important; height: 32px !important; border-radius: 50% !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
+  font-size: 16px !important; font-weight: bold !important; color: white !important;
+  border: 2px solid white !important; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  cursor: pointer !important; transition: transform 0.2s ease !important;
+}
+.person-marker:hover { transform: scale(1.2) !important; }
+.person-marker.male { background-color: var(--gender-male) !important; }
+.person-marker.female { background-color: var(--gender-female) !important; }
+.person-marker.selected { transform: scale(1.3) !important; border: 3px solid var(--primary-500) !important; }

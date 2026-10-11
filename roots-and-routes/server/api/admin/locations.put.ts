@@ -18,10 +18,11 @@ export default defineEventHandler(async (event) => {
     }
     const entry = value as Partial<KnownLocation>
     const name = typeof entry.name === 'string' ? entry.name.trim().replace(/\s+/g, ' ') : ''
-    const latitude = Number(entry.latitude)
-    const longitude = Number(entry.longitude)
+    const latitude = entry.latitude
+    const longitude = entry.longitude
     const key = normalizeLocationName(name)
-    if (!name || name.length > 300 || !key || !Number.isFinite(latitude) || !Number.isFinite(longitude)
+    if (!name || name.length > 300 || !key || typeof latitude !== 'number' || typeof longitude !== 'number'
+      || !Number.isFinite(latitude) || !Number.isFinite(longitude)
       || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
       throw createError({ statusCode: 400, statusMessage: 'Each location needs a name and valid latitude/longitude' })
     }

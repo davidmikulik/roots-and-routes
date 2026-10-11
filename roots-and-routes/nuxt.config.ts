@@ -114,8 +114,4 @@ export default defineNuxtConfig({
     '~/assets/css/leaflet.css',
   ],
 
-  // Environment variables
-  env: {
-    NODE_ENV: process.env.NODE_ENV || 'development',
-  },
 })

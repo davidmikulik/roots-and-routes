@@ -91,11 +91,6 @@ export default defineNuxtConfig({
     },
   },
 
-  // Build configuration
-  build: {
-    transpile: ['vue-leaflet'],
-  },
-
   // App configuration
   app: {
     head: {

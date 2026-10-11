@@ -129,7 +129,9 @@ const handleFile = async (file: File) => {
         uploadSuccess.value = true
         isUploading.value = false
       } catch (error: any) {
-        const message = error.data?.statusMessage || error.message || 'GEDCOM import failed'
+        const message = [error.data?.statusMessage, error.data?.message || error.message]
+          .filter((part): part is string => typeof part === 'string' && part.length > 0)
+          .join(': ') || 'GEDCOM import failed'
         uploadError.value = message
         gedcomStore.setError(message)
         isUploading.value = false
@@ -142,7 +144,9 @@ const handleFile = async (file: File) => {
     }
     reader.readAsText(file)
   } catch (error: any) {
-    const message = error.data?.statusMessage || error.message || 'GEDCOM import failed'
+    const message = [error.data?.statusMessage, error.data?.message || error.message]
+      .filter((part): part is string => typeof part === 'string' && part.length > 0)
+      .join(': ') || 'GEDCOM import failed'
     uploadError.value = message
     gedcomStore.setError(message)
     isUploading.value = false

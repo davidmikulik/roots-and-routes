@@ -72,6 +72,13 @@ export default defineNuxtConfig({
   // Deployment configuration
   nitro: {
     preset: 'vercel',
+    prerender: {
+      routes: ['/', '/map', '/tree', '/gedcom'],
+    },
+    routeRules: {
+      '/api/**': { headers: { 'cache-control': 'no-cache' } },
+      '/**': { headers: { 'cache-control': 'public, max-age=3600' } },
+    },
     serverAssets: [
       {
         dir: '~~/assets',

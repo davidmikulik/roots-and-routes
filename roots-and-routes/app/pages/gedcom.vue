@@ -81,11 +81,13 @@ const handleFile = async (file: File) => {
   }
   
   uploadProgress.value = 50
+  let clientImportStage = 'reading file'
   
   try {
     const reader = new FileReader()
     reader.onload = async (event) => {
       try {
+        clientImportStage = 'validating file'
         const content = event.target?.result as string
         if (!content) throw new Error('Failed to read file')
         
@@ -99,6 +101,7 @@ const handleFile = async (file: File) => {
 
         const formData = new FormData()
         formData.append('file', file)
+        clientImportStage = 'sending file to import API'
         const response = await $fetch<GedcomImportResponse>('/api/gedcom/import', {
           method: 'POST',
           body: formData,
@@ -106,6 +109,7 @@ const handleFile = async (file: File) => {
         unresolvedLocations.value = response.data.locations.unresolved
         
         if (importMode.value === 'merge' && gedcomStore.hasData) {
+          clientImportStage = 'preparing merge preview'
           const preview = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
           applyKnownLocations(preview.file, response.data.locations.matched)
           pendingGedcom.value = preview.file
@@ -118,6 +122,7 @@ const handleFile = async (file: File) => {
           return
         }
 
+        clientImportStage = 'parsing imported data in browser'
         const parseResult = await gedcomStore.parseFile(content, undefined, undefined, response.data.locations.matched)
         
         if (!parseResult) {
@@ -131,7 +136,7 @@ const handleFile = async (file: File) => {
         const message = [error.data?.statusMessage, error.data?.message || error.message]
           .filter((part): part is string => typeof part === 'string' && part.length > 0)
           .join(': ') || 'GEDCOM import failed'
-        uploadError.value = message
+        uploadError.value = `${clientImportStage}: ${message}`
         gedcomStore.setError(message)
         isUploading.value = false
       }

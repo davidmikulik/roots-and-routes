@@ -189,6 +189,21 @@ export const useGedcomStore = () => {
     }
   }
 
+  const refreshLocationCoordinates = async (knownLocations: KnownLocation[]): Promise<number> => {
+    const file = state.value.file
+    if (!file) return 0
+    const matched = applyKnownLocations(file, knownLocations, true)
+    const previousResult = state.value.parseResult
+    setFile(file, {
+      file,
+      warnings: previousResult?.warnings || [],
+      errors: previousResult?.errors || [],
+      stats: previousResult?.stats || { linesProcessed: 0, recordsCreated: file.individuals.size + file.families.size, parsingTime: 0 },
+    }, state.value.fileId || undefined, state.value.userId || undefined)
+    if (import.meta.client) await saveContent(writeGedcom(file))
+    return matched.length
+  }
+
   const parseFile = async (content: string, fileId?: string, userId?: string, knownLocations: KnownLocation[] = []): Promise<GedcomParseResult | null> => {
     state.value.isLoading = true
     state.value.error = null
@@ -552,6 +567,7 @@ export const useGedcomStore = () => {
     // Actions
     setFile,
     parseFile,
+    refreshLocationCoordinates,
     findDuplicatePeople,
     mergeFile,
     savePerson,

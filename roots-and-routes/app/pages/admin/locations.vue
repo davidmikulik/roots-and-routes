@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
+import { useGedcomStore } from '~~/composables/useGedcomStore'
 import type { KnownLocation } from '~~/types/locations'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
+const gedcomStore = useGedcomStore()
 const adminToken = ref('')
 const locations = ref<KnownLocation[]>([])
 const draft = reactive<{ name: string; latitude: number | null; longitude: number | null }>({
@@ -69,7 +71,8 @@ const saveLocations = async () => {
       headers: getHeaders(),
       body: { locations: locations.value },
     })
-    successMessage.value = `Saved ${response.count} locations.`
+    const refreshedLocations = await gedcomStore.refreshLocationCoordinates(locations.value)
+    successMessage.value = `Saved ${response.count} locations. Updated ${refreshedLocations} locations in the current tree.`
   } catch (error: any) {
     errorMessage.value = error.data?.statusMessage || error.message || 'Unable to save locations.'
   } finally {

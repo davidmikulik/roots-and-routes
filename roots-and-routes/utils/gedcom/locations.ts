@@ -30,7 +30,7 @@ export function getUniqueGedcomLocations(file: GedcomFile): string[] {
   return [...locations.values()].sort((first, second) => first.localeCompare(second))
 }
 
-export function applyKnownLocations(file: GedcomFile, knownLocations: KnownLocation[]): KnownLocation[] {
+export function applyKnownLocations(file: GedcomFile, knownLocations: KnownLocation[], overwriteCoordinates = false): KnownLocation[] {
   const lookup = new Map(knownLocations.map(location => [normalizeLocationName(location.name), location]))
   const matched = new Map<string, KnownLocation>()
   const apply = (event?: GedcomEvent) => {
@@ -38,7 +38,7 @@ export function applyKnownLocations(file: GedcomFile, knownLocations: KnownLocat
     const key = normalizeLocationName(event.place)
     const location = lookup.get(key)
     if (!location || location.latitude === null || location.longitude === null) return
-    if (!event.coordinates) event.coordinates = [location.latitude, location.longitude]
+    if (overwriteCoordinates || !event.coordinates) event.coordinates = [location.latitude, location.longitude]
     matched.set(key, location)
   }
 

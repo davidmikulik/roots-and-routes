@@ -52,7 +52,6 @@ next-env.d.ts
 
 # Vercel
 .vercel
-vercel.json
 
 # Temporary files
 tmp

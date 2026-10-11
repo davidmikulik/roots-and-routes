@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json.schemastore.org/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@nuxtjs/vercel-builder",
+      "config": {
+        "preset": "vercel",
+        "serverFiles": ["server/**/*"],
+        "prerender": {
+          "routes": ["/", "/map", "/tree", "/gedcom"],
+          "crawlLinks": true
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/",
+      "headers": {
+        "Cache-Control": "public, max-age=3600"
+      }
+    }
+  ],
+  "edgeConfig": {
+    "items": [
+      {
+        "path": "/",
+        "caching": {
+          "maxAge": 3600,
+          "staleWhileRevalidate": 600
+        }
+      },
+      {
+        "path": "/api/*",
+        "caching": {
+          "maxAge": 0,
+          "staleWhileRevalidate": 0
+        }
+      }
+    ],
+    "cookies": [
+      {
+        "name": "color-mode",
+        "maxAge": 31536000
+      }
+    ]
+  },
+  "regions": ["iad1"],
+  "functions": {
+    "memory": 3008,
+    "maxDuration": 60,
+    "regions": ["iad1"]
+  },
+  "images": {
+    "domains": [],
+    "formats": ["image/avif", "image/webp"]
+  },
+  "regenerateOnBuild": true,
+  "github": {
+    "silent": false,
+    "autoAlias": false
+  }
+}

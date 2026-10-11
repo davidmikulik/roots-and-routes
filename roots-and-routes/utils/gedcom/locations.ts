@@ -37,7 +37,7 @@ export function applyKnownLocations(file: GedcomFile, knownLocations: KnownLocat
     if (!event?.place) return
     const key = normalizeLocationName(event.place)
     const location = lookup.get(key)
-    if (!location) return
+    if (!location || location.latitude === null || location.longitude === null) return
     if (!event.coordinates) event.coordinates = [location.latitude, location.longitude]
     matched.set(key, location)
   }

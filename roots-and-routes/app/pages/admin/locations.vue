@@ -141,12 +141,13 @@ const saveLocations = async () => {
               <tr v-for="(location, index) in locations" :key="`${location.name}-${index}`" class="border-t border-gray-100 dark:border-gray-700">
                 <td class="px-4 py-2">
                   <input v-model="location.name" required maxlength="300" class="w-full rounded border px-3 py-2" :aria-label="`Location name ${index + 1}`">
+                  <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">Coordinates needed</span>
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.latitude" required type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="`Latitude for ${location.name}`">
+                  <input v-model.number="location.latitude" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="`Latitude for ${location.name}`" placeholder="Pending">
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.longitude" required type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="`Longitude for ${location.name}`">
+                  <input v-model.number="location.longitude" type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="`Longitude for ${location.name}`" placeholder="Pending">
                 </td>
                 <td class="px-4 py-2 text-right">
                   <button @click="locations.splice(index, 1)" class="text-red-700 underline dark:text-red-300" :aria-label="`Remove ${location.name}`">Remove</button>

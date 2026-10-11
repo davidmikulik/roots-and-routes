@@ -31,12 +31,24 @@ export default defineEventHandler(async (event) => {
     const matchedLocations = applyKnownLocations(parseResult.file, knownLocations)
     const matchedNames = new Set(matchedLocations.map(location => normalizeLocationName(location.name)))
     const unresolvedLocations = uniqueLocations.filter(location => !matchedNames.has(normalizeLocationName(location)))
+    const locationCatalog = new Map(knownLocations.map(location => [normalizeLocationName(location.name), location]))
+    let addedLocations = 0
+    for (const location of unresolvedLocations) {
+      const key = normalizeLocationName(location)
+      if (locationCatalog.has(key)) continue
+      locationCatalog.set(key, { name: location, latitude: null, longitude: null })
+      addedLocations++
+    }
+    if (addedLocations > 0) {
+      importStage = 'saving newly discovered locations to private Blob catalog'
+      await saveKnownLocations([...locationCatalog.values()])
+    }
     return {
       success: true,
       message: 'GEDCOM file imported successfully',
       data: {
         parseResult,
-        locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations },
+        locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations, added: addedLocations },
       },
       timestamp: new Date().toISOString(),
     }

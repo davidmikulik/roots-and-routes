@@ -16,21 +16,23 @@ export default defineEventHandler(async (event) => {
     if (!value || typeof value !== 'object') {
       throw createError({ statusCode: 400, statusMessage: 'Invalid location entry' })
     }
-    const entry = value as Partial<KnownLocation>
+    const entry = value as Partial<KnownLocation> & { latitude?: unknown; longitude?: unknown }
     const name = typeof entry.name === 'string' ? entry.name.trim().replace(/\s+/g, ' ') : ''
-    const latitude = entry.latitude
-    const longitude = entry.longitude
+    const latitude = entry.latitude === '' ? null : entry.latitude
+    const longitude = entry.longitude === '' ? null : entry.longitude
     const key = normalizeLocationName(name)
-    if (!name || name.length > 300 || !key || typeof latitude !== 'number' || typeof longitude !== 'number'
-      || !Number.isFinite(latitude) || !Number.isFinite(longitude)
-      || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
-      throw createError({ statusCode: 400, statusMessage: 'Each location needs a name and valid latitude/longitude' })
+    const pendingCoordinates = latitude === null && longitude === null
+    const validCoordinates = typeof latitude === 'number' && typeof longitude === 'number'
+      && Number.isFinite(latitude) && Number.isFinite(longitude)
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+    if (!name || name.length > 300 || !key || (!pendingCoordinates && !validCoordinates)) {
+      throw createError({ statusCode: 400, statusMessage: 'Each location needs a name and either both valid coordinates or neither coordinate' })
     }
     if (seenNames.has(key)) {
       throw createError({ statusCode: 400, statusMessage: `Duplicate location: ${name}` })
     }
     seenNames.add(key)
-    locations.push({ name, latitude, longitude })
+    locations.push({ name, latitude: pendingCoordinates ? null : latitude as number, longitude: pendingCoordinates ? null : longitude as number })
   }
 
   await saveKnownLocations(locations)

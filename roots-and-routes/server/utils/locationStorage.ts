@@ -7,11 +7,14 @@ const locationsPath = (): string => `${getUploadDir()}/known-locations.json`
 function isKnownLocation(value: unknown): value is KnownLocation {
   if (!value || typeof value !== 'object') return false
   const location = value as Partial<KnownLocation>
-  return typeof location.name === 'string'
+  const hasNoCoordinates = location.latitude === null && location.longitude === null
+  const hasValidCoordinates = typeof location.latitude === 'number'
+    && typeof location.longitude === 'number'
     && Number.isFinite(location.latitude)
     && Number.isFinite(location.longitude)
-    && Math.abs(location.latitude!) <= 90
-    && Math.abs(location.longitude!) <= 180
+    && Math.abs(location.latitude) <= 90
+    && Math.abs(location.longitude) <= 180
+  return typeof location.name === 'string' && location.name.trim().length > 0 && (hasNoCoordinates || hasValidCoordinates)
 }
 
 export async function loadKnownLocations(): Promise<KnownLocation[]> {

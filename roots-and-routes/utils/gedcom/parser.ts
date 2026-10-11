@@ -6,7 +6,7 @@ import type {
   GedcomMultimedia, GedcomNote, GedcomMetadata, GedcomParseResult,
   GedcomParseOptions, GedcomEventType, AppPerson, MapEvent, FamilyTree,
   GedcomCalendar, GedcomConfidenceLevel, GedcomAddress, GedcomAssociation
-} from '~/types/gedcom'
+} from '~~/types/gedcom'
 
 // Constants
 const DEFAULT_OPTIONS: GedcomParseOptions = { maxLines: 0, resolveXrefs: true, extractCoordinates: false }

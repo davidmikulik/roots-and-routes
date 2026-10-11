@@ -2,6 +2,8 @@ import { defineNuxtConfig } from 'nuxt/config'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  srcDir: 'app/',
+
   // TypeScript support
   typescript: {
     strict: true,
@@ -23,7 +25,7 @@ export default defineNuxtConfig({
 
   // Auto-import composables
   imports: {
-    dirs: ['~/composables', '~/utils'],
+    dirs: ['~~/composables', '~~/utils'],
   },
 
   // Modules
@@ -71,7 +73,7 @@ export default defineNuxtConfig({
     preset: 'vercel',
     serverAssets: [
       {
-        dir: '~/assets',
+        dir: '~~/assets',
       },
     ],
     vercel: {
@@ -110,8 +112,8 @@ export default defineNuxtConfig({
 
   // CSS configuration
   css: [
-    '~/assets/css/main.css',
-    '~/assets/css/leaflet.css',
+    '~~/assets/css/main.css',
+    '~~/assets/css/leaflet.css',
   ],
 
 })

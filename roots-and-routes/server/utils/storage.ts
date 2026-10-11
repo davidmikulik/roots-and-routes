@@ -1,6 +1,6 @@
 // Vercel Blob Storage Utilities
 import { put, del, list, head } from '@vercel/blob'
-import type { GedcomFile, GedcomParseResult, UploadedFile } from '~/types'
+import type { GedcomFile, GedcomParseResult, UploadedFile } from '~~/types'
 
 const config = useRuntimeConfig()
 const getBlobToken = (): string => config.vercelBlob?.token || process.env.BLOB_READ_WRITE_TOKEN || ''

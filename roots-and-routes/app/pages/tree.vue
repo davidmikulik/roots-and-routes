@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
-import { useGedcomStore } from '~/composables/useGedcomStore'
-import type { IndividualDraft } from '~/composables/useGedcomStore'
-import type { AppPerson, FamilyTree, GedcomEvent } from '~/types/gedcom'
+import { useGedcomStore } from '~~/composables/useGedcomStore'
+import type { IndividualDraft } from '~~/composables/useGedcomStore'
+import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')

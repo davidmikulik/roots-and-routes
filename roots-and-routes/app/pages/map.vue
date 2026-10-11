@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
-import { useGedcomStore } from '~/composables/useGedcomStore'
-import type { MapEvent } from '~/types/gedcom'
+import { useGedcomStore } from '~~/composables/useGedcomStore'
+import type { MapEvent } from '~~/types/gedcom'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')

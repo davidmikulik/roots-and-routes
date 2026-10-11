@@ -1,7 +1,7 @@
 // GEDCOM Import API Endpoint
-import { parseGedcom } from '~/utils/gedcom/parser'
-import { uploadGedcomFile, saveParsedGedcom, validateFileSize, isGedcomFile } from '~/server/utils/storage'
-import type { GedcomParseResult, UploadedFile } from '~/types'
+import { parseGedcom } from '~~/utils/gedcom/parser'
+import { uploadGedcomFile, saveParsedGedcom, validateFileSize, isGedcomFile } from '~~/server/utils/storage'
+import type { GedcomParseResult, UploadedFile } from '~~/types'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()

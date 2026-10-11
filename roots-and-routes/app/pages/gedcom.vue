@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
-import { useGedcomStore } from '~/composables/useGedcomStore'
-import type { DuplicateChoice } from '~/composables/useGedcomStore'
-import type { GedcomFile } from '~/types/gedcom'
-import { parseGedcom, writeGedcom } from '~/utils/gedcom/parser'
+import { useGedcomStore } from '~~/composables/useGedcomStore'
+import type { DuplicateChoice } from '~~/composables/useGedcomStore'
+import type { GedcomFile } from '~~/types/gedcom'
+import { parseGedcom, writeGedcom } from '~~/utils/gedcom/parser'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')

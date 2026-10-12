@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
 import type { KnownLocation } from '~~/types/locations'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 const gedcomStore = useGedcomStore()
-const adminToken = ref('')
+const adminAuth = useAdminAuth()
 const locations = ref<KnownLocation[]>([])
 const draft = reactive<{ name: string; latitude: number | null; longitude: number | null }>({
   name: '',
@@ -21,11 +22,11 @@ const successMessage = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const isImporting = ref(false)
 
-const getHeaders = () => ({ Authorization: `Bearer ${adminToken.value.trim()}` })
+const getHeaders = () => adminAuth.authHeaders()
 
 const loadLocations = async () => {
-  if (!adminToken.value.trim()) {
-    errorMessage.value = 'Enter the administrator token.'
+  if (!adminAuth.isAdmin.value) {
+    isConnected.value = false
     return
   }
   isLoading.value = true
@@ -42,6 +43,9 @@ const loadLocations = async () => {
     isLoading.value = false
   }
 }
+
+// Load as soon as the admin token is known (restored after mount or entered above)
+watch(() => adminAuth.isAdmin.value, isAdmin => { if (isAdmin) loadLocations() }, { immediate: true })
 
 const addLocation = () => {
   const name = draft.name.trim().replace(/\s+/g, ' ')
@@ -238,20 +242,16 @@ const handleImport = async (event: Event) => {
     </header>
 
     <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
-      <form class="flex flex-wrap items-end gap-3" @submit.prevent="loadLocations">
-        <label class="min-w-64 flex-1 text-sm font-medium">Administrator token
-          <input v-model="adminToken" type="password" autocomplete="current-password" class="mt-1 w-full rounded border px-3 py-2" placeholder="ADMIN_API_TOKEN">
-        </label>
-        <button type="submit" :disabled="isLoading" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
-          {{ isLoading ? 'Connecting?' : isConnected ? 'Reload locations' : 'Connect' }}
-        </button>
-      </form>
+      <AdminLogin />
+      <button v-if="adminAuth.isAdmin.value" type="button" :disabled="isLoading" class="mt-3 rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60" @click="loadLocations">
+        {{ isLoading ? 'Loading…' : isConnected ? 'Reload locations' : 'Load locations' }}
+      </button>
     </section>
 
     <p v-if="errorMessage" role="alert" class="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">{{ errorMessage }}</p>
     <p v-if="successMessage" role="status" class="mb-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">{{ successMessage }}</p>
 
-    <template v-if="isConnected">
+    <template v-if="isConnected && adminAuth.isAdmin.value">
       <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
         <h2 class="mb-4 text-lg font-semibold">Add location</h2>
         <form class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px_auto]" @submit.prevent="addLocation">

@@ -4,6 +4,7 @@ import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
 
 interface GedcomState {
   file: GedcomFile | null
@@ -193,6 +194,17 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
 
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
+  const adminAuth = useAdminAuth()
+
+  // Persist the current file to the server; needs the admin token and throws on failure
+  const saveToServer = async (file: GedcomFile): Promise<void> => {
+    if (!state.value.fileId) return
+    await $fetch('/api/gedcom/save', {
+      method: 'POST',
+      headers: adminAuth.authHeaders(),
+      body: { fileId: state.value.fileId, fileData: serializeGedcomFile(file) },
+    })
+  }
 
   // Method to explicitly load data from server
   const refreshFromServer = async (): Promise<boolean> => {
@@ -260,6 +272,7 @@ export const useGedcomStore = () => {
   }
 
   const refreshLocationCoordinates = async (knownLocations: KnownLocation[]): Promise<number> => {
+    adminAuth.requireAdmin()
     const file = state.value.file
     if (!file) return 0
     const matched = applyKnownLocations(file, knownLocations, true)
@@ -270,7 +283,10 @@ export const useGedcomStore = () => {
       errors: previousResult?.errors || [],
       stats: previousResult?.stats || { linesProcessed: 0, recordsCreated: file.individuals.size + file.families.size, parsingTime: 0 },
     }, state.value.fileId || undefined, state.value.userId || undefined)
-    if (import.meta.client) await saveContent(writeGedcom(file))
+    if (import.meta.client) {
+      await saveContent(writeGedcom(file))
+      await saveToServer(file)
+    }
     return matched.length
   }
 
@@ -324,6 +340,7 @@ export const useGedcomStore = () => {
   }
 
   const mergeFile = async (incoming: GedcomFile, choices: Record<string, DuplicateChoice> = {}): Promise<void> => {
+    adminAuth.requireAdmin()
     const current = state.value.file
     if (!current) {
       const result: GedcomParseResult = {
@@ -447,24 +464,12 @@ export const useGedcomStore = () => {
     })
     if (import.meta.client) {
       await saveContent(writeGedcom(merged))
-      // Also save to server if we have a fileId
-      if (state.value.fileId) {
-        try {
-          await $fetch('/api/gedcom/save', {
-            method: 'POST',
-            body: {
-              fileId: state.value.fileId,
-              fileData: serializeGedcomFile(merged)
-            }
-          })
-        } catch (error) {
-          console.error('Failed to save merged file to server:', error)
-        }
-      }
+      await saveToServer(merged)
     }
   }
 
   const savePerson = async (draft: IndividualDraft): Promise<string> => {
+    adminAuth.requireAdmin()
     const file = state.value.file
     if (!file) throw new Error('Import a GEDCOM file before editing people')
     const xrefId = draft.xrefId || (() => {
@@ -565,25 +570,13 @@ export const useGedcomStore = () => {
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
       await saveContent(writeGedcom(file))
-      // Also save to server if we have a fileId
-      if (state.value.fileId) {
-        try {
-          await $fetch('/api/gedcom/save', {
-            method: 'POST',
-            body: {
-              fileId: state.value.fileId,
-              fileData: serializeGedcomFile(file)
-            }
-          })
-        } catch (error) {
-          console.error('Failed to save to server:', error)
-        }
-      }
+      await saveToServer(file)
     }
     return xrefId
   }
 
   const removePerson = async (xrefId: string): Promise<void> => {
+    adminAuth.requireAdmin()
     const file = state.value.file
     if (!file) return
     file.individuals.delete(xrefId)
@@ -603,20 +596,7 @@ export const useGedcomStore = () => {
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
       await saveContent(writeGedcom(file))
-      // Also save to server if we have a fileId
-      if (state.value.fileId) {
-        try {
-          await $fetch('/api/gedcom/save', {
-            method: 'POST',
-            body: {
-              fileId: state.value.fileId,
-              fileData: serializeGedcomFile(file)
-            }
-          })
-        } catch (error) {
-          console.error('Failed to save to server:', error)
-        }
-      }
+      await saveToServer(file)
     }
   }
 
@@ -625,11 +605,12 @@ export const useGedcomStore = () => {
     state.value = createEmptyState()
     if (import.meta.client) {
       void deleteContent().catch(error => console.error('Failed to clear saved GEDCOM data:', error))
-      // Also delete from server if we have a fileId
-      if (fileId) {
+      // Deleting server data is an admin action; without the token only the local copy is cleared
+      if (fileId && adminAuth.isAdmin.value) {
         try {
           await $fetch('/api/gedcom/delete', {
             method: 'POST',
+            headers: adminAuth.authHeaders(),
             body: { fileId }
           })
         } catch (error) {

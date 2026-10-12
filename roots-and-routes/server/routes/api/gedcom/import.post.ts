@@ -5,8 +5,10 @@ import { validateFileSize, isGedcomFile, saveParsedGedcom, uploadGedcomFile } fr
 import { loadKnownLocations, saveKnownLocations } from '~~/server/utils/locationStorage'
 import type { GedcomParseResult, GedcomFile } from '~~/types'
 import type { UploadedFile } from '~~/types'
+import { requireAdminToken } from '~~/server/utils/adminAuth'
 
 export default defineEventHandler(async (event) => {
+  requireAdminToken(event)
   const config = useRuntimeConfig()
   const maxFileSize = config.gedcom?.maxFileSize || 10 * 1024 * 1024
   let importStage = 'reading upload'

@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const route = useRoute()
+const adminAuth = useAdminAuth()
+const adminPanelOpen = ref(false)
+
+// Restore the saved token after hydration (pages are prerendered without it)
+onMounted(() => adminAuth.restore())
 const pageTitle = computed(() => {
   switch (route.path) {
     case '/': return 'Home'
@@ -79,7 +85,26 @@ useHead({
             >GEDCOM</NuxtLink>
           </nav>
 
-          <div class="flex items-center space-x-4">
+          <div class="relative flex items-center space-x-4">
+            <button
+              @click="adminPanelOpen = !adminPanelOpen"
+              class="p-2 rounded-full transition-colors duration-200"
+              :class="{
+                'bg-gray-700 hover:bg-gray-600': isDark,
+                'bg-gray-200 hover:bg-gray-300': !isDark,
+              }"
+              :aria-label="adminAuth.isAdmin.value ? 'Administrator mode' : 'Administrator login'"
+              :title="adminAuth.isAdmin.value ? 'Administrator mode' : 'Administrator login'"
+            >
+              <span class="text-xl">{{ adminAuth.isAdmin.value ? '🔓' : '🔒' }}</span>
+            </button>
+            <div
+              v-if="adminPanelOpen"
+              class="absolute right-0 top-12 z-50 w-80 p-4 rounded-lg border shadow-lg"
+              :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-white border-gray-200 text-gray-900': !isDark }"
+            >
+              <AdminLogin @done="adminPanelOpen = false" />
+            </div>
             <button
               @click="colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'"
               class="p-2 rounded-full transition-colors duration-200"

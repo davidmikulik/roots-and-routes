@@ -6,6 +6,7 @@ import type { GedcomFile } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
 
 interface GedcomImportResponse {
   data: {
@@ -18,6 +19,7 @@ const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const gedcomStore = useGedcomStore()
+const adminAuth = useAdminAuth()
 const router = useRouter()
 
 const isDragging = ref(false)
@@ -57,6 +59,10 @@ const handleFileDrop = (event: DragEvent) => {
 }
 
 const handleFile = async (file: File) => {
+  if (!adminAuth.isAdmin.value) {
+    uploadError.value = 'Log in as administrator to import GEDCOM files.'
+    return
+  }
   uploadError.value = null
   uploadSuccess.value = false
   uploadProgress.value = 0
@@ -105,6 +111,7 @@ const handleFile = async (file: File) => {
         clientImportStage = 'sending file to import API'
         const response = await $fetch<GedcomImportResponse>('/api/gedcom/import', {
           method: 'POST',
+          headers: adminAuth.authHeaders(),
           body: formData,
         })
         unresolvedLocations.value = response.data.locations.unresolved
@@ -179,6 +186,7 @@ const handleDragOver = (event: DragEvent) => {
 }
 
 const clearData = () => {
+  if (!window.confirm('Delete the family tree from the server for everyone?')) return
   gedcomStore.clear()
   fileInfo.value = null
   uploadSuccess.value = false
@@ -236,6 +244,17 @@ const viewTree = () => router.push('/tree')
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div
+        v-if="!adminAuth.isAdmin.value"
+        class="p-8 rounded-2xl border-2"
+        :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-gray-50 border-gray-300 text-gray-900': !isDark }"
+      >
+        <div class="text-6xl mb-4 text-center">🔒</div>
+        <h3 class="text-xl font-bold mb-2 text-center">Import is for administrators</h3>
+        <p class="opacity-75 mb-6 text-center">Log in with the administrator token to import, merge or change data.</p>
+        <AdminLogin />
+      </div>
+      <div
+        v-else
         class="relative p-8 rounded-2xl border-2 border-dashed transition-all duration-200"
         :class="{
           'bg-gray-800 border-gray-600': isDark,
@@ -271,7 +290,7 @@ const viewTree = () => router.push('/tree')
       </div>
       
       <div class="space-y-4">
-        <div class="flex items-center justify-between gap-4 p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+        <div v-if="adminAuth.isAdmin.value" class="flex items-center justify-between gap-4 p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <label for="import-mode" class="font-medium">When importing</label>
           <select id="import-mode" v-model="importMode" class="px-3 py-2 rounded border bg-transparent">
             <option value="replace">Replace current tree</option>
@@ -279,7 +298,7 @@ const viewTree = () => router.push('/tree')
           </select>
         </div>
 
-        <section v-if="pendingGedcom" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+        <section v-if="pendingGedcom && adminAuth.isAdmin.value" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <h2 class="font-bold text-lg mb-1">Review GEDCOM merge</h2>
           <p class="text-sm opacity-75 mb-4">
             {{ pendingGedcom.individuals.size }} incoming people; {{ pendingDuplicates.length }} possible duplicates.
@@ -391,6 +410,7 @@ const viewTree = () => router.push('/tree')
               Export GEDCOM
             </button>
             <button
+              v-if="adminAuth.isAdmin.value"
               @click="clearData"
               class="px-4 py-2 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg text-sm font-medium"
             >

@@ -1,8 +1,10 @@
 // GEDCOM Delete API Endpoint - delete GEDCOM data from server
 import { deleteFile } from '~~/server/utils/storage'
 import { getUploadDir } from '~~/server/utils/storage'
+import { requireAdminToken } from '~~/server/utils/adminAuth'
 
 export default defineEventHandler(async (event) => {
+  requireAdminToken(event)
   try {
     const body = await readBody<{ fileId: string }>(event)
     

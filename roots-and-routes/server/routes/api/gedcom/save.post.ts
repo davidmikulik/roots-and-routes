@@ -1,8 +1,10 @@
 // GEDCOM Save API Endpoint - save parsed GEDCOM data to server
 import { saveParsedGedcom } from '~~/server/utils/storage'
+import { requireAdminToken } from '~~/server/utils/adminAuth'
 import { deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 
 export default defineEventHandler(async (event) => {
+  requireAdminToken(event)
   try {
     const body = await readBody<{ fileId: string; fileData: SerializedGedcomFile }>(event)
     

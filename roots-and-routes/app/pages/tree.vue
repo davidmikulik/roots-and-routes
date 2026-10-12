@@ -2,12 +2,14 @@
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import type { IndividualDraft } from '~~/composables/useGedcomStore'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
 import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const gedcomStore = useGedcomStore()
+const adminAuth = useAdminAuth()
 const router = useRouter()
 
 // Ensure data is loaded when visiting /tree directly
@@ -190,19 +192,29 @@ const openPersonEditor = (person?: AppPerson) => {
 const addEvent = () => personForm.value.events.push(createEmptyEventDraft())
 const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
 
+const errorText = (error: any): string => error?.data?.statusMessage || error?.message || 'Unknown error'
+
 const savePerson = async () => {
   if (!personForm.value.fullName.trim()) return
-  const id = await gedcomStore.savePerson({ ...personForm.value, xrefId: editingPersonId.value || undefined })
-  const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
-  if (savedPerson) selectPerson(savedPerson)
-  editorOpen.value = false
+  try {
+    const id = await gedcomStore.savePerson({ ...personForm.value, xrefId: editingPersonId.value || undefined })
+    const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
+    if (savedPerson) selectPerson(savedPerson)
+    editorOpen.value = false
+  } catch (error) {
+    window.alert(`Saving failed: ${errorText(error)}`)
+  }
 }
 
 const deletePerson = async (person: AppPerson) => {
   if (!window.confirm(`Delete ${person.fullName} from this family tree?`)) return
-  await gedcomStore.removePerson(person.id)
-  selectedPerson.value = null
-  rootPersonId.value = null
+  try {
+    await gedcomStore.removePerson(person.id)
+    selectedPerson.value = null
+    rootPersonId.value = null
+  } catch (error) {
+    window.alert(`Deleting failed: ${errorText(error)}`)
+  }
 }
 </script>
 
@@ -265,18 +277,20 @@ const deletePerson = async (person: AppPerson) => {
         <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
       </div>
       
-      <button
-        @click="importGedcom"
-        class="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
-      >
-        Import GEDCOM
-      </button>
-      <button
-        @click="openPersonEditor()"
-        class="px-5 py-3 border border-gray-300 dark:border-gray-600 rounded-lg font-medium"
-      >
-        Add Person
-      </button>
+      <template v-if="adminAuth.isAdmin.value">
+        <button
+          @click="importGedcom"
+          class="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
+        >
+          Import GEDCOM
+        </button>
+        <button
+          @click="openPersonEditor()"
+          class="px-5 py-3 border border-gray-300 dark:border-gray-600 rounded-lg font-medium"
+        >
+          Add Person
+        </button>
+      </template>
     </div>
 
     <div v-if="!gedcomStore.hasData.value" class="p-12 text-center rounded-lg" :class="{ 'bg-gray-800': isDark, 'bg-gray-100': !isDark }">
@@ -288,6 +302,7 @@ const deletePerson = async (person: AppPerson) => {
         Import a GEDCOM file to view your family tree
       </p>
       <button
+        v-if="adminAuth.isAdmin.value"
         @click="importGedcom"
         class="px-8 py-4 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium text-lg"
       >
@@ -400,8 +415,10 @@ const deletePerson = async (person: AppPerson) => {
                 >
                   Set as Root
                 </button>
-                <button @click.stop="openPersonEditor(person)" class="ml-2 text-xs underline">Edit</button>
-                <button @click.stop="deletePerson(person)" class="ml-2 text-xs text-red-600 underline">Delete</button>
+                <template v-if="adminAuth.isAdmin.value">
+                  <button @click.stop="openPersonEditor(person)" class="ml-2 text-xs underline">Edit</button>
+                  <button @click.stop="deletePerson(person)" class="ml-2 text-xs text-red-600 underline">Delete</button>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -459,7 +476,7 @@ const deletePerson = async (person: AppPerson) => {
         >
           ×
         </button>
-        <div class="absolute top-4 right-14 flex gap-3 text-sm">
+        <div v-if="adminAuth.isAdmin.value" class="absolute top-4 right-14 flex gap-3 text-sm">
           <button @click="openPersonEditor(selectedPerson)" class="underline">Edit</button>
           <button @click="deletePerson(selectedPerson)" class="text-red-600 underline">Delete</button>
         </div>
@@ -522,7 +539,7 @@ const deletePerson = async (person: AppPerson) => {
       </div>
     </div>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="editorOpen = false">
+    <div v-if="editorOpen && adminAuth.isAdmin.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="editorOpen = false">
       <form class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl" @submit.prevent="savePerson">
         <div class="flex items-center justify-between mb-5">
           <h2 class="text-xl font-bold">{{ editingPersonId ? 'Edit Person' : 'Add Person' }}</h2>

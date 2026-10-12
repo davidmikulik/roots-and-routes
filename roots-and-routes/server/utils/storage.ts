@@ -1,6 +1,6 @@
 // Vercel Blob Storage Utilities
 import { put, get, del, list, head } from '@vercel/blob'
-import type { GedcomFile, GedcomParseResult, UploadedFile } from '~~/types'
+import type { GedcomFile, GedcomParseResult, UploadedFile, GedcomIndividual, GedcomFamily, GedcomSource, GedcomRepository, GedcomMultimedia, GedcomNote } from '~~/types'
 
 const getBlobToken = (): string => 
   useRuntimeConfig().vercelBlob?.token || 
@@ -13,6 +13,60 @@ const requireBlobToken = (): string => {
   const token = getBlobToken()
   if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
   return token
+}
+
+// Serialization helpers for GedcomFile
+// Maps are not serializable by JSON.stringify, so we need to convert them
+interface SerializedGedcomFile {
+  version: string
+  encoding: string
+  source: string
+  date: string
+  copyright?: string
+  individuals: [string, GedcomIndividual][]
+  families: [string, GedcomFamily][]
+  sources: [string, GedcomSource][]
+  repositories: [string, GedcomRepository][]
+  multimedia: [string, GedcomMultimedia][]
+  notes: [string, GedcomNote][]
+  metadata: any
+  rawLines?: any[]
+}
+
+function serializeGedcomFile(file: GedcomFile): SerializedGedcomFile {
+  return {
+    version: file.version,
+    encoding: file.encoding,
+    source: file.source,
+    date: file.date.toISOString(),
+    copyright: file.copyright,
+    individuals: Array.from(file.individuals.entries()),
+    families: Array.from(file.families.entries()),
+    sources: Array.from(file.sources.entries()),
+    repositories: Array.from(file.repositories.entries()),
+    multimedia: Array.from(file.multimedia.entries()),
+    notes: Array.from(file.notes.entries()),
+    metadata: file.metadata,
+    rawLines: file.rawLines,
+  }
+}
+
+function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomFile {
+  return {
+    version: serialized.version,
+    encoding: serialized.encoding,
+    source: serialized.source,
+    date: new Date(serialized.date),
+    copyright: serialized.copyright,
+    individuals: new Map(serialized.individuals),
+    families: new Map(serialized.families),
+    sources: new Map(serialized.sources),
+    repositories: new Map(serialized.repositories),
+    multimedia: new Map(serialized.multimedia),
+    notes: new Map(serialized.notes),
+    metadata: serialized.metadata,
+    rawLines: serialized.rawLines,
+  }
 }
 
 export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; fileId?: string; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {
@@ -79,7 +133,8 @@ export async function fileExists(path: string): Promise<boolean> {
 
 export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?: string): Promise<string> {
   const token = requireBlobToken()
-  const jsonString = JSON.stringify(data)
+  const serialized = serializeGedcomFile(data)
+  const jsonString = JSON.stringify(serialized)
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
   await put(path, jsonString, { access: 'private', token, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true })
   return path
@@ -87,7 +142,25 @@ export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?
 
 export async function loadParsedGedcom(fileId: string, userId?: string): Promise<GedcomFile | null> {
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
-  try { const content = await getFileText(path); return JSON.parse(content) as GedcomFile } catch (error) { console.error('Failed to load parsed GEDCOM:', error); return null }
+  try {
+    const content = await getFileText(path)
+    const serialized = JSON.parse(content) as SerializedGedcomFile
+    
+    // Check if this is old format (Maps serialized as empty objects)
+    // If individuals/families are arrays, it's the new format
+    // If they're objects, it's the old broken format
+    if (serialized.individuals && typeof serialized.individuals === 'object' && !Array.isArray(serialized.individuals)) {
+      console.log(`[STORAGE] Detected old format for ${fileId}, attempting to recover...`)
+      // Try to parse as old format - but this won't work as Maps were lost
+      // The best approach is to re-parse the original GEDCOM file
+      return null
+    }
+    
+    return deserializeGedcomFile(serialized)
+  } catch (error) {
+    console.error('Failed to load parsed GEDCOM:', error)
+    return null
+  }
 }
 
 export async function saveExportedGedcom(content: string, filename: string, userId?: string): Promise<UploadedFile> {

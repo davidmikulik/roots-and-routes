@@ -1,12 +1,60 @@
 // GEDCOM Get API Endpoint - retrieve saved GEDCOM data
-import { loadParsedGedcom, listUserFiles } from '~~/server/utils/storage'
-import type { GedcomFile } from '~~/types'
+import { loadParsedGedcom, listUserFiles, getFileText } from '~~/server/utils/storage'
+import { parseGedcom } from '~~/utils/gedcom/parser'
+import type { GedcomFile, GedcomParseResult } from '~~/types'
+
+// Helper function to re-parse original GEDCOM file if parsed data is corrupted
+async function tryReparseFromOriginal(fileId: string, uploadDir: string): Promise<GedcomFile | null> {
+  try {
+    // Try to find the original .ged or .gedcom file
+    const extensions = ['.ged', '.gedcom']
+    for (const ext of extensions) {
+      const originalPath = `${uploadDir}/${fileId}${ext}`
+      try {
+        const content = await getFileText(originalPath)
+        console.log(`[GEDCOM GET] Re-parsing original file ${originalPath}`)
+        const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+        return result.file
+      } catch (error) {
+        // Try with 'current' as filename
+        if (fileId === 'current') {
+          const currentPath = `${uploadDir}/current${ext}`
+          try {
+            const content = await getFileText(currentPath)
+            console.log(`[GEDCOM GET] Re-parsing original file ${currentPath}`)
+            const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+            return result.file
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+    }
+    return null
+  } catch (error) {
+    console.error('[GEDCOM GET] Failed to re-parse from original:', error)
+    return null
+  }
+}
+
+// Helper to check if parsed data is corrupted (empty maps but metadata shows counts)
+function isParsedDataCorrupted(file: GedcomFile): boolean {
+  const hasIndividualsMeta = file.metadata.totalIndividuals > 0
+  const hasFamiliesMeta = file.metadata.totalFamilies > 0
+  const hasIndividualsData = file.individuals.size > 0
+  const hasFamiliesData = file.families.size > 0
+  
+  // If metadata says there should be data but maps are empty, data is corrupted
+  return (hasIndividualsMeta && !hasIndividualsData) || (hasFamiliesMeta && !hasFamiliesData)
+}
 
 export default defineEventHandler(async (event) => {
   console.log('[GEDCOM GET] Starting...')
   try {
     const query = getQuery(event)
     const fileId = query.fileId as string | undefined
+    const config = useRuntimeConfig()
+    const uploadDir = config.gedcom?.uploadDir || 'uploads/gedcom'
     console.log(`[GEDCOM GET] fileId: ${fileId || 'none'}`)
     
     let gedcomData: GedcomFile | null = null
@@ -17,7 +65,18 @@ export default defineEventHandler(async (event) => {
       console.log('[GEDCOM GET] Trying to load current...')
       gedcomData = await loadParsedGedcom('current')
       if (gedcomData) {
-        console.log(`[GEDCOM GET] Loaded current with ${gedcomData.metadata.totalIndividuals} individuals`)
+        console.log(`[GEDCOM GET] Loaded current with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
+        // Check if data is corrupted (empty maps but metadata shows counts)
+        if (isParsedDataCorrupted(gedcomData)) {
+          console.log('[GEDCOM GET] Detected corrupted parsed data for current, attempting to re-parse...')
+          const reparsed = await tryReparseFromOriginal('current', uploadDir)
+          if (reparsed) {
+            gedcomData = reparsed
+            console.log(`[GEDCOM GET] Successfully re-parsed, got ${gedcomData.individuals.size} individuals`)
+          } else {
+            console.log('[GEDCOM GET] Failed to re-parse, using corrupted data')
+          }
+        }
         fileInfo = { id: 'current', name: 'current' }
       } else {
         console.log('[GEDCOM GET] Current file not found')
@@ -26,7 +85,18 @@ export default defineEventHandler(async (event) => {
       console.log(`[GEDCOM GET] Trying to load fileId: ${fileId}`)
       gedcomData = await loadParsedGedcom(fileId)
       if (gedcomData) {
-        console.log(`[GEDCOM GET] Loaded ${fileId} with ${gedcomData.metadata.totalIndividuals} individuals`)
+        console.log(`[GEDCOM GET] Loaded ${fileId} with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
+        // Check if data is corrupted
+        if (isParsedDataCorrupted(gedcomData)) {
+          console.log(`[GEDCOM GET] Detected corrupted parsed data for ${fileId}, attempting to re-parse...`)
+          const reparsed = await tryReparseFromOriginal(fileId, uploadDir)
+          if (reparsed) {
+            gedcomData = reparsed
+            console.log(`[GEDCOM GET] Successfully re-parsed ${fileId}, got ${gedcomData.individuals.size} individuals`)
+          } else {
+            console.log(`[GEDCOM GET] Failed to re-parse ${fileId}, using corrupted data`)
+          }
+        }
         fileInfo = { id: fileId, name: fileId }
       } else {
         console.log(`[GEDCOM GET] File ${fileId} not found`)
@@ -65,7 +135,18 @@ export default defineEventHandler(async (event) => {
       
       gedcomData = await loadParsedGedcom(latestFile.id)
       if (gedcomData) {
-        console.log(`[GEDCOM GET] Loaded latest file with ${gedcomData.metadata.totalIndividuals} individuals`)
+        console.log(`[GEDCOM GET] Loaded latest file with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
+        // Check if data is corrupted
+        if (isParsedDataCorrupted(gedcomData)) {
+          console.log(`[GEDCOM GET] Detected corrupted parsed data for latest file, attempting to re-parse...`)
+          const reparsed = await tryReparseFromOriginal(latestFile.id, uploadDir)
+          if (reparsed) {
+            gedcomData = reparsed
+            console.log(`[GEDCOM GET] Successfully re-parsed latest file, got ${gedcomData.individuals.size} individuals`)
+          } else {
+            console.log('[GEDCOM GET] Failed to re-parse latest file, using corrupted data')
+          }
+        }
       } else {
         console.log(`[GEDCOM GET] Failed to load latest file ${latestFile.id}`)
       }

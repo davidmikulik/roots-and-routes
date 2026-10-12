@@ -11,7 +11,7 @@ const router = useRouter()
 
 // Ensure data is loaded when visiting /map directly
 onMounted(async () => {
-  if (!gedcomStore.hasData) {
+  if (!gedcomStore.hasData.value) {
     await gedcomStore.refreshFromServer()
   }
 })
@@ -244,8 +244,8 @@ watch(() => filteredEvents.value, () => {
   if (mapReady.value) updateMapMarkers()
 }, { deep: true })
 
-watch(() => gedcomStore.hasData, () => {
-  if (gedcomStore.hasData && mapReady.value) {
+watch(() => gedcomStore.hasData.value, () => {
+  if (gedcomStore.hasData.value && mapReady.value) {
     updateMapMarkers()
   }
 }, { deep: true })
@@ -343,7 +343,7 @@ onUnmounted(() => {
             </div>
             <div class="flex justify-between">
               <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Individuals:</span>
-              <span class="font-medium">{{ gedcomStore.totalIndividuals }}</span>
+              <span class="font-medium">{{ gedcomStore.totalIndividuals.value }}</span>
             </div>
           </div>
         </div>
@@ -364,7 +364,7 @@ onUnmounted(() => {
           </div>
         </div>
         
-        <div v-if="!gedcomStore.hasData && mapReady" class="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-800/80 rounded-lg">
+        <div v-if="!gedcomStore.hasData.value && mapReady" class="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-800/80 rounded-lg">
           <div class="text-center p-8">
             <div class="text-4xl mb-4">🗺️</div>
             <h3 class="text-xl font-bold mb-2" :class="{ 'text-gray-800': !isDark, 'text-white': isDark }">

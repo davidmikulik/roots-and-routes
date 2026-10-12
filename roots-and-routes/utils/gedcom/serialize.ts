@@ -24,6 +24,30 @@ const toEntries = <T>(value: Map<string, T> | [string, T][] | undefined): [strin
 const toMap = <T>(value: Map<string, T> | [string, T][] | undefined): Map<string, T> =>
   value instanceof Map ? value : new Map(Array.isArray(value) ? value : [])
 
+// JSON also turns Date into an ISO string; revive the Date-typed fields
+// (GedcomDate.parsed/date1/date2, GedcomEvent.sortDate, metadata.earliest/latestDate)
+const DATE_KEYS = new Set(['parsed', 'date1', 'date2', 'sortDate', 'earliestDate', 'latestDate'])
+
+const reviveDates = <T>(value: T, seen = new WeakSet<object>()): T => {
+  if (!value || typeof value !== 'object' || value instanceof Date || seen.has(value)) return value
+  seen.add(value)
+  if (value instanceof Map) {
+    for (const item of value.values()) reviveDates(item, seen)
+    return value
+  }
+  const record = value as Record<string, unknown>
+  for (const key of Object.keys(record)) {
+    const field = record[key]
+    if (DATE_KEYS.has(key) && typeof field === 'string') {
+      const date = new Date(field)
+      record[key] = Number.isNaN(date.getTime()) ? null : date
+    } else if (field && typeof field === 'object') {
+      reviveDates(field, seen)
+    }
+  }
+  return value
+}
+
 export function serializeGedcomFile(file: GedcomFile): SerializedGedcomFile {
   return {
     version: file.version,
@@ -49,13 +73,13 @@ export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomF
     source: serialized.source,
     date: new Date(serialized.date),
     copyright: serialized.copyright,
-    individuals: toMap(serialized.individuals),
-    families: toMap(serialized.families),
+    individuals: reviveDates(toMap(serialized.individuals)),
+    families: reviveDates(toMap(serialized.families)),
     sources: toMap(serialized.sources),
     repositories: toMap(serialized.repositories),
     multimedia: toMap(serialized.multimedia),
     notes: toMap(serialized.notes),
-    metadata: serialized.metadata,
+    metadata: reviveDates(serialized.metadata),
     rawLines: serialized.rawLines,
   }
 }

@@ -12,14 +12,14 @@ const router = useRouter()
 
 // Ensure data is loaded when visiting /tree directly
 onMounted(async () => {
-  console.log('[TREE] onMounted triggered, hasData:', gedcomStore.hasData)
-  if (!gedcomStore.hasData) {
+  console.log('[TREE] onMounted triggered, hasData:', gedcomStore.hasData.value)
+  if (!gedcomStore.hasData.value) {
     console.log('[TREE] No data, refreshing from server...')
     await gedcomStore.refreshFromServer()
-    console.log('[TREE] After refresh, hasData:', gedcomStore.hasData)
-    console.log('[TREE] Individuals count:', gedcomStore.totalIndividuals)
+    console.log('[TREE] After refresh, hasData:', gedcomStore.hasData.value)
+    console.log('[TREE] Individuals count:', gedcomStore.totalIndividuals.value)
   } else {
-    console.log('[TREE] Already has data, individuals:', gedcomStore.totalIndividuals)
+    console.log('[TREE] Already has data, individuals:', gedcomStore.totalIndividuals.value)
   }
 })
 
@@ -279,7 +279,7 @@ const deletePerson = async (person: AppPerson) => {
       </button>
     </div>
 
-    <div v-if="!gedcomStore.hasData" class="p-12 text-center rounded-lg" :class="{ 'bg-gray-800': isDark, 'bg-gray-100': !isDark }">
+    <div v-if="!gedcomStore.hasData.value" class="p-12 text-center rounded-lg" :class="{ 'bg-gray-800': isDark, 'bg-gray-100': !isDark }">
       <div class="text-4xl mb-4">🌳</div>
       <h3 class="text-xl font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
         No GEDCOM Data
@@ -300,12 +300,12 @@ const deletePerson = async (person: AppPerson) => {
       <div class="mb-6 p-6 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
         <h3 class="font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
           Tree Statistics
-          <span v-if="!gedcomStore.hasData" class="text-xs text-red-500 ml-2">[DEBUG: No data - check console]</span>
+          <span v-if="!gedcomStore.hasData.value" class="text-xs text-red-500 ml-2">[DEBUG: No data - check console]</span>
         </h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div class="p-4 rounded-lg" :class="{ 'bg-gray-700': isDark, 'bg-gray-100': !isDark }">
             <div class="text-2xl font-bold" :class="{ 'text-primary-400': isDark, 'text-primary-600': !isDark }">
-              {{ gedcomStore.totalIndividuals }}
+              {{ gedcomStore.totalIndividuals.value }}
             </div>
             <div class="text-sm opacity-75 mt-1" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
               Individuals
@@ -313,7 +313,7 @@ const deletePerson = async (person: AppPerson) => {
           </div>
           <div class="p-4 rounded-lg" :class="{ 'bg-gray-700': isDark, 'bg-gray-100': !isDark }">
             <div class="text-2xl font-bold" :class="{ 'text-primary-400': isDark, 'text-primary-600': !isDark }">
-              {{ gedcomStore.totalFamilies }}
+              {{ gedcomStore.totalFamilies.value }}
             </div>
             <div class="text-sm opacity-75 mt-1" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
               Families

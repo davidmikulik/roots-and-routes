@@ -12,6 +12,7 @@ Aplikace je v `roots-and-routes/`. Architekturu popisuje `AGENTS.md` v kořeni r
 | Příznak | Nejpravděpodobnější příčina |
 |---|---|
 | Hned po importu OK, po přepnutí stránky prázdno | Odpověď `GET /api/gedcom/get` přišla s `Map` → `{}`. Chybí `serializeGedcomFile` na serveru nebo `deserializeGedcomFile` v `loadFromServer` (`composables/useGedcomStore.ts`). |
+| `GET` vrací pole, ale `/tree` je po přepnutí prázdný | Datum zůstalo po JSON jako string, chyba `getFullYear is not a function` v konzoli. Ověř `reviveDates` / `DATE_KEYS` v `utils/gedcom/serialize.ts`. |
 | `GET` vrací `success: false` | `parsed/current.json` v Blobu chybí nebo je ve starém formátu a `loadParsedGedcom` vrátil `null`. Ověř, že existuje `uploads/gedcom/current.ged` pro re-parse. |
 | Úpravy osob se po reloadu ztratí | `POST /api/gedcom/save` padá. Body musí být `serializeGedcomFile(file)` a server musí volat `deserializeGedcomFile`. |
 | Funguje jen na jednom zařízení | Data jsou jen v IndexedDB (fallback), server je nemá. Zkontroluj, jestli proběhl import přes server. |

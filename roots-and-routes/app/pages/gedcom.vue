@@ -109,7 +109,7 @@ const handleFile = async (file: File) => {
         })
         unresolvedLocations.value = response.data.locations.unresolved
         
-        if (importMode.value === 'merge' && gedcomStore.hasData) {
+        if (importMode.value === 'merge' && gedcomStore.hasData.value) {
           clientImportStage = 'preparing merge preview'
           const preview = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
           applyKnownLocations(preview.file, response.data.locations.matched)
@@ -275,7 +275,7 @@ const viewTree = () => router.push('/tree')
           <label for="import-mode" class="font-medium">When importing</label>
           <select id="import-mode" v-model="importMode" class="px-3 py-2 rounded border bg-transparent">
             <option value="replace">Replace current tree</option>
-            <option value="merge" :disabled="!gedcomStore.hasData">Merge into current tree</option>
+            <option value="merge" :disabled="!gedcomStore.hasData.value">Merge into current tree</option>
           </select>
         </div>
 
@@ -330,7 +330,7 @@ const viewTree = () => router.push('/tree')
           </div>
         </div>
         
-        <div v-if="uploadSuccess && gedcomStore.hasData" class="p-6 rounded-lg border" :class="{ 'bg-green-900/20 border-green-600': isDark, 'bg-green-50 border-green-200': !isDark }">
+        <div v-if="uploadSuccess && gedcomStore.hasData.value" class="p-6 rounded-lg border" :class="{ 'bg-green-900/20 border-green-600': isDark, 'bg-green-50 border-green-200': !isDark }">
           <div class="flex items-center mb-4">
             <div class="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center mr-3">
               <span class="text-white">✓</span>
@@ -344,11 +344,11 @@ const viewTree = () => router.push('/tree')
             <div class="grid grid-cols-2 gap-4">
               <div class="flex justify-between">
                 <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Individuals:</span>
-                <span class="font-medium">{{ gedcomStore.totalIndividuals }}</span>
+                <span class="font-medium">{{ gedcomStore.totalIndividuals.value }}</span>
               </div>
               <div class="flex justify-between">
                 <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Families:</span>
-                <span class="font-medium">{{ gedcomStore.totalFamilies }}</span>
+                <span class="font-medium">{{ gedcomStore.totalFamilies.value }}</span>
               </div>
               <div class="flex justify-between">
                 <span :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">Lines:</span>
@@ -408,7 +408,7 @@ const viewTree = () => router.push('/tree')
           </div>
         </div>
         
-        <div v-if="!isUploading && !uploadSuccess && !gedcomStore.hasData" class="p-8 rounded-lg text-center" :class="{ 'bg-gray-800': isDark, 'bg-gray-50': !isDark }">
+        <div v-if="!isUploading && !uploadSuccess && !gedcomStore.hasData.value" class="p-8 rounded-lg text-center" :class="{ 'bg-gray-800': isDark, 'bg-gray-50': !isDark }">
           <div class="text-4xl mb-4">📄</div>
           <h3 class="font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
             No GEDCOM Data

@@ -14,6 +14,11 @@ Aplikace je v podsložce `roots-and-routes/`, ne v kořeni repa. Všechny `npm` 
 |---|---|
 | `app/pages/` | `index`, `map`, `tree`, `gedcom` (import/merge), `settings`, `admin/locations` |
 | `composables/useGedcomStore.ts` | Jediný klientský store (`useState('gedcom-store')`): načítání, merge, editace, ukládání |
+| `composables/useSettings.ts` | Uživatelská nastavení (jazyk, mapa, strom, data, soukromí) v localStorage, ukládají se automaticky; `sanitizeSettings` je validuje |
+| `composables/useT.ts`, `i18n/` | Překlady EN/CS: `const { t } = useT()`; zprávy jsou po stránkách v `i18n/<stránka>.ts`, `defineMessages(en, cs)` hlídá, že čeština má všechny klíče |
+| `composables/useAnonymize.ts` | Anonymní režim: jen zobrazení (jména → iniciály, data → rok, místa skrytá) |
+| `composables/useAdminAuth.ts`, `app/components/AdminLogin.vue` | Admin token a přihlášení |
+| `server/utils/backups.ts`, `server/routes/api/admin/backups*` | Zálohy celého stromu v Blobu (`uploads/gedcom/backups/<id>.ged`), výpis, ruční vytvoření a obnova |
 | `utils/gedcom/parser.ts` | `parseGedcom`, `writeGedcom`, `convertToFamilyTree`, `createMapEventsFromFile` |
 | `utils/gedcom/serialize.ts` | `serializeGedcomFile` / `deserializeGedcomFile` (Map ↔ pole entries) |
 | `utils/gedcom/locations.ts` | Normalizace názvů míst, doplnění souřadnic ze známých lokalit |
@@ -49,6 +54,11 @@ Nuxt 3 (SSR + Nitro, preset `vercel`), Vue 3, TypeScript strict, Tailwind, Leafl
 - **Všechny zápisy jsou jen pro admina.** `server/middleware/adminWrites.ts` vyžaduje `Authorization: Bearer <ADMIN_API_TOKEN>` u každého požadavku na `/api/**` kromě GET/HEAD/OPTIONS a u všeho pod `/api/admin/**`. Endpointy `import`, `save` a `delete` navíc samy volají `requireAdminToken`. Veřejné zůstává jen čtení (`/api/gedcom/get`, `/api/gedcom/export`). Na klientu drží token `composables/useAdminAuth.ts` (v localStorage, obnovuje se v `onMounted` v `app.vue`). Přihlášení řeší `app/components/AdminLogin.vue` (zámek v hlavičce) a ověřuje ho `GET /api/admin/verify`. Každá nová mutace ve storu musí volat `adminAuth.requireAdmin()` a posílat `adminAuth.authHeaders()`. Editační UI skrývej přes `adminAuth.isAdmin.value`.
 - `server/middleware/auth.ts` vyžaduje token pro všechny routy, pokud je nastavené `API_TOKEN`. Admin lokalit používá zvlášť `ADMIN_API_TOKEN` (`server/utils/adminAuth.ts`).
 - V kódu jsou záměrně ponechané `console.log` s prefixy `[GEDCOM]`, `[GEDCOM GET]`, `[STORAGE]`, které pomáhají při ladění na produkci (Vercel logy).
+
+- **Nastavení a jazyk:** stránky nesmí mít natvrdo psaný text, ale `t('klíč')`. Nový klíč přidej do `i18n/<stránka>.ts` v obou jazycích. Nastavení se načte až v `onMounted` v `app.vue` (`useSettings().restore()`), protože stránky se prerenderují. Dělá-li stránka z nastavení počáteční hodnotu, musí si ji nastavit i po `appSettings.ready` (viz `tree.vue`, `map.vue`). Přepínač motivu nastavuje `colorMode.preference`, ne `colorMode.value`, jinak se volba neuloží.
+- **Automatické ukládání vypnuté:** úpravy se jen označí `state.dirty` a na server jdou až přes `saveNow()` (tlačítko ve stromu). Dokud je `dirty`, `onMounted` ve storu nepřepisuje data ze serveru a `app.vue` varuje před zavřením stránky.
+- **Import:** `POST /api/gedcom/import` má pole `mode` (`replace` | `merge`), `backupOnImport`, `backupCount`. Režim `merge` jen analyzuje soubor (lokality) a **nic neukládá**, sloučený strom ukládá klient až po schválení. Pole formuláře musí být ve `FormData` až **za** souborem.
+- **`setFile` musí zachovat `fileId`.** Úpravy ho volají bez id. Kdyby ho vynuloval, `saveToServer` by se tiše přeskočil a změny by se po dalším načtení stránky ztratily.
 
 ## Příkazy (v `roots-and-routes/`)
 

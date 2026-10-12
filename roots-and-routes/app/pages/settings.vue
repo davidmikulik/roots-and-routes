@@ -1,83 +1,53 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
+import { useGedcomStore } from '~~/composables/useGedcomStore'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { useSettings, LANGUAGES } from '~~/composables/useSettings'
+import { useT } from '~~/composables/useT'
+
+interface BackupInfo { id: string; createdAt: string; size: number }
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
-
-const settings = ref({
-  map: {
-    defaultStyle: 'osm',
-    defaultZoom: 7,
-    defaultCenter: [50.0755, 14.4378] as [number, number],
-    showClusters: true,
-    showMigrationLines: false,
-    autoGeocode: true,
-  },
-  tree: {
-    defaultView: 'tree' as 'tree' | 'chart' | 'list',
-    showPhotos: true,
-    showDetails: true,
-    maxGenerations: 10,
-  },
-  data: {
-    language: 'en',
-    autoSave: true,
-    backupOnImport: true,
-    backupCount: 5,
-  },
-  privacy: {
-    shareData: false,
-    anonymousMode: false,
-  },
-})
+const { t } = useT()
+const appSettings = useSettings()
+const settings = appSettings.settings
+const adminAuth = useAdminAuth()
+const gedcomStore = useGedcomStore()
 
 const activeSection = ref('general')
+const message = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 const sections = [
-  { id: 'general', name: 'General', icon: '⚙️' },
-  { id: 'map', name: 'Map Settings', icon: '🗺️' },
-  { id: 'tree', name: 'Tree Settings', icon: '🌳' },
-  { id: 'data', name: 'Data & Backup', icon: '💾' },
-  { id: 'privacy', name: 'Privacy', icon: '🔒' },
-  { id: 'about', name: 'About', icon: 'ℹ️' },
-]
+  { id: 'general', icon: '⚙️' },
+  { id: 'map', icon: '🗺️' },
+  { id: 'tree', icon: '🌳' },
+  { id: 'data', icon: '💾' },
+  { id: 'privacy', icon: '🔒' },
+  { id: 'about', icon: 'ℹ️' },
+] as const
 
-const saveSettings = () => {
-  console.log('Settings saved:', settings.value)
+const themeOptions = [
+  { value: 'light', icon: '☀️' },
+  { value: 'dark', icon: '🌙' },
+  { value: 'system', icon: '🖥️' },
+] as const
+
+const treeViews = ['tree', 'chart', 'list'] as const
+
+// The preference (not the resolved value) is what the color-mode module remembers
+const setTheme = (theme: 'light' | 'dark' | 'system') => {
+  colorMode.preference = theme
 }
 
 const resetToDefaults = () => {
-  settings.value = {
-    map: {
-      defaultStyle: 'osm',
-      defaultZoom: 7,
-      defaultCenter: [50.0755, 14.4378] as [number, number],
-      showClusters: true,
-      showMigrationLines: false,
-      autoGeocode: true,
-    },
-    tree: {
-      defaultView: 'tree',
-      showPhotos: true,
-      showDetails: true,
-      maxGenerations: 10,
-    },
-    data: {
-      language: 'en',
-      autoSave: true,
-      backupOnImport: true,
-      backupCount: 5,
-    },
-    privacy: {
-      shareData: false,
-      anonymousMode: false,
-    },
-  }
+  if (!window.confirm(t('settings.resetConfirm'))) return
+  appSettings.reset()
+  message.value = { type: 'success', text: t('settings.resetDone') }
 }
 
 const exportSettings = () => {
-  const data = JSON.stringify(settings.value, null, 2)
-  const blob = new Blob([data], { type: 'application/json' })
+  const blob = new Blob([JSON.stringify(settings.value, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -88,45 +58,93 @@ const exportSettings = () => {
   URL.revokeObjectURL(url)
 }
 
-const importSettings = (event: Event) => {
+const importSettings = async (event: Event) => {
   const input = event.target as HTMLInputElement
-  if (input.files && input.files.length > 0) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string)
-        settings.value = { ...settings.value, ...data }
-      } catch (error) {
-        console.error('Failed to import settings:', error)
-      }
-    }
-    reader.readAsText(input.files[0])
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const data = JSON.parse(await file.text())
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('not an object')
+    appSettings.replace(data)
+    message.value = { type: 'success', text: t('settings.importDone') }
+  } catch {
+    message.value = { type: 'error', text: t('settings.importInvalid') }
+  } finally {
+    // Allows importing the same file again
+    input.value = ''
   }
 }
 
-const themeOptions = [
-  { value: 'light', label: 'Light Mode', icon: '☀️' },
-  { value: 'dark', label: 'Dark Mode', icon: '🌙' },
-  { value: 'system', label: 'System Preference', icon: '🖥️' },
-]
+// Backups live on the server and are only visible to the administrator
+const backups = ref<BackupInfo[]>([])
+const backupsLoading = ref(false)
 
-const setTheme = (theme: string) => {
-  colorMode.value = theme as 'light' | 'dark' | 'system'
+const formatDate = (iso: string): string =>
+  new Date(iso).toLocaleString(settings.value.language === 'cs' ? 'cs-CZ' : 'en-GB')
+const formatSize = (bytes: number): string => `${Math.max(1, Math.round(bytes / 1024))} kB`
+
+const loadBackups = async () => {
+  if (!adminAuth.isAdmin.value) {
+    backups.value = []
+    return
+  }
+  backupsLoading.value = true
+  try {
+    backups.value = (await $fetch<{ backups: BackupInfo[] }>('/api/admin/backups', { headers: adminAuth.authHeaders() })).backups
+  } catch {
+    message.value = { type: 'error', text: t('settings.data.loadFailed') }
+  } finally {
+    backupsLoading.value = false
+  }
 }
 
-const router = useRouter()
+const restoreBackup = async (backup: BackupInfo) => {
+  if (!window.confirm(t('settings.data.restoreConfirm', { date: formatDate(backup.createdAt) }))) return
+  try {
+    const result = await $fetch<{ people: number }>('/api/admin/backups/restore', {
+      method: 'POST',
+      headers: adminAuth.authHeaders(),
+      body: { id: backup.id, keep: settings.value.data.backupCount },
+    })
+    await gedcomStore.refreshFromServer()
+    await loadBackups()
+    message.value = { type: 'success', text: t('settings.data.restored', { people: result.people }) }
+  } catch {
+    message.value = { type: 'error', text: t('settings.data.restoreFailed') }
+  }
+}
+
+watch([() => adminAuth.isAdmin.value, activeSection], ([isAdmin, section]) => {
+  if (isAdmin && section === 'data') loadBackups()
+}, { immediate: true })
+
+const cardClass = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6'
+const selectClass = 'px-4 py-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
+const rangeClass = 'w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer'
+const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors font-medium'
 </script>
 
 <template>
   <div class="min-h-screen">
     <div class="mb-6">
       <h1 class="text-3xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-        Settings
+        {{ t('settings.title') }}
       </h1>
       <p class="text-lg opacity-75 mt-1" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-        Configure your application preferences
+        {{ t('settings.subtitle') }}
       </p>
     </div>
+
+    <p
+      v-if="message"
+      :role="message.type === 'error' ? 'alert' : 'status'"
+      class="mb-4 rounded border p-3 text-sm"
+      :class="message.type === 'error'
+        ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'
+        : 'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'"
+    >
+      {{ message.text }}
+    </p>
 
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <div class="lg:col-span-1">
@@ -143,51 +161,48 @@ const router = useRouter()
               }"
             >
               <span>{{ section.icon }}</span>
-              <span>{{ section.name }}</span>
+              <span>{{ t(`settings.section.${section.id}`) }}</span>
             </button>
           </nav>
         </div>
-        
+
         <div class="mt-6 space-y-3">
-          <button
-            @click="saveSettings"
-            class="w-full px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
-          >
-            Save Settings
-          </button>
-          <button
-            @click="resetToDefaults"
-            class="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors font-medium"
-          >
-            Reset to Defaults
+          <p class="text-sm opacity-70" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
+            {{ t('settings.autosaved') }}
+          </p>
+          <button @click="resetToDefaults" class="w-full" :class="buttonClass">
+            {{ t('settings.reset') }}
           </button>
           <div class="flex gap-3">
-            <button
-              @click="exportSettings"
-              class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
-            >
-              Export
+            <button @click="exportSettings" class="flex-1 text-sm" :class="buttonClass">
+              {{ t('settings.export') }}
             </button>
-            <label class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium cursor-pointer">
-              Import
+            <label class="flex-1 text-sm text-center cursor-pointer" :class="buttonClass">
+              {{ t('settings.import') }}
               <input type="file" accept=".json" @change="importSettings" class="hidden">
             </label>
           </div>
         </div>
       </div>
-      
-      <div class="lg:col-span-3">
-        <div v-if="activeSection === 'general'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              General Settings
-            </h2>
 
-            <NuxtLink to="/admin/locations" class="mb-6 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600">
-              Manage known locations
-            </NuxtLink>
-            
-            <div class="space-y-4">
+      <div class="lg:col-span-3">
+        <div v-if="activeSection === 'general'" :class="cardClass">
+          <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            {{ t('settings.general.title') }}
+          </h2>
+
+          <NuxtLink
+            to="/admin/locations"
+            class="mb-6 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
+          >
+            {{ t('settings.general.locations') }}
+          </NuxtLink>
+
+          <div class="space-y-6">
+            <div>
+              <div class="font-medium mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.general.theme') }}
+              </div>
               <div class="grid grid-cols-3 gap-4">
                 <button
                   v-for="theme in themeOptions"
@@ -195,301 +210,162 @@ const router = useRouter()
                   @click="setTheme(theme.value)"
                   class="p-4 rounded-lg border-2 transition-all text-center"
                   :class="{
-                    'border-primary-500 bg-primary-50 dark:bg-primary-900/20': colorMode.value === theme.value,
-                    'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600': colorMode.value !== theme.value,
+                    'border-primary-500 bg-primary-50 dark:bg-primary-900/20': colorMode.preference === theme.value,
+                    'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600': colorMode.preference !== theme.value,
                   }"
                 >
                   <div class="text-3xl mb-2">{{ theme.icon }}</div>
                   <div class="text-sm font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                    {{ theme.label }}
+                    {{ t(`settings.general.theme.${theme.value}`) }}
                   </div>
                 </button>
               </div>
-              
-              <div class="flex flex-col gap-2">
-                <label class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  Language
-                </label>
-                <select
-                  v-model="settings.data.language"
-                  class="px-4 py-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                  :class="{ 'text-gray-900': !isDark, 'text-white': isDark }"
-                >
-                  <option value="en">English</option>
-                  <option value="cs">Čeština</option>
-                </select>
-              </div>
-              
-              <div class="flex flex-col gap-2">
-                <label class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  Default View
-                </label>
-                <select
-                  v-model="settings.tree.defaultView"
-                  class="px-4 py-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                  :class="{ 'text-gray-900': !isDark, 'text-white': isDark }"
-                >
-                  <option value="tree">Tree View</option>
-                  <option value="chart">Chart View</option>
-                  <option value="list">List View</option>
-                </select>
-              </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label for="language" class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.general.language') }}
+              </label>
+              <select id="language" v-model="settings.language" :class="selectClass">
+                <option v-for="language in LANGUAGES" :key="language.value" :value="language.value">{{ language.label }}</option>
+              </select>
             </div>
           </div>
         </div>
-        
-        <div v-if="activeSection === 'map'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Map Settings
-            </h2>
-            
-            <div class="space-y-6">
-              <div class="flex flex-col gap-2">
-                <label class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  Default Zoom Level
-                </label>
-                <input
-                  v-model.number="settings.map.defaultZoom"
-                  type="range"
-                  min="1"
-                  max="18"
-                  class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                >
-                <div class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ settings.map.defaultZoom }}
-                </div>
-              </div>
-              
-              <div class="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span>🎯</span>
-                    <span :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Show Clusters</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input v-model="settings.map.showClusters" type="checkbox" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span>✈️</span>
-                    <span :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Show Migration Lines</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input v-model="settings.map.showMigrationLines" type="checkbox" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span>📍</span>
-                    <span :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Auto Geocode</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input v-model="settings.map.autoGeocode" type="checkbox" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-              </div>
+
+        <div v-if="activeSection === 'map'" :class="cardClass">
+          <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            {{ t('settings.map.title') }}
+          </h2>
+          <div class="space-y-6">
+            <div class="flex flex-col gap-2">
+              <label for="map-zoom" class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.map.zoom') }}: {{ settings.map.defaultZoom }}
+              </label>
+              <input id="map-zoom" v-model.number="settings.map.defaultZoom" type="range" min="1" max="18" :class="rangeClass">
+              <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.map.zoomHint') }}</p>
+            </div>
+            <div class="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <SettingsToggle v-model="settings.map.showClusters" icon="🎯" :label="t('settings.map.clusters')" :description="t('settings.map.clustersHint')" />
+              <SettingsToggle v-model="settings.map.showMigrationLines" icon="✈️" :label="t('settings.map.migration')" :description="t('settings.map.migrationHint')" />
             </div>
           </div>
         </div>
-        
-        <div v-if="activeSection === 'tree'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Tree Settings
-            </h2>
-            
-            <div class="space-y-6">
-              <div class="flex flex-col gap-2">
-                <label class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  Maximum Generations to Display
-                </label>
-                <input
-                  v-model.number="settings.tree.maxGenerations"
-                  type="range"
-                  min="1"
-                  max="20"
-                  class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                >
-                <div class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ settings.tree.maxGenerations }}
-                </div>
-              </div>
-              
-              <div class="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span>📷</span>
-                    <span :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Show Photos</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input v-model="settings.tree.showPhotos" type="checkbox" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <span>📋</span>
-                    <span :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Show Detailed Info</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input v-model="settings.tree.showDetails" type="checkbox" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-              </div>
+
+        <div v-if="activeSection === 'tree'" :class="cardClass">
+          <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            {{ t('settings.tree.title') }}
+          </h2>
+          <div class="space-y-6">
+            <div class="flex flex-col gap-2">
+              <label for="default-view" class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.tree.defaultView') }}
+              </label>
+              <select id="default-view" v-model="settings.tree.defaultView" :class="selectClass">
+                <option v-for="view in treeViews" :key="view" :value="view">{{ t(`settings.tree.view.${view}`) }}</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="max-generations" class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.tree.maxGenerations') }}: {{ settings.tree.maxGenerations }}
+              </label>
+              <input id="max-generations" v-model.number="settings.tree.maxGenerations" type="range" min="1" max="20" :class="rangeClass">
+              <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.tree.maxGenerationsHint') }}</p>
+            </div>
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+              <SettingsToggle v-model="settings.tree.showDetails" icon="📋" :label="t('settings.tree.showDetails')" :description="t('settings.tree.showDetailsHint')" />
             </div>
           </div>
         </div>
-        
+
         <div v-if="activeSection === 'data'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div :class="cardClass">
             <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Data & Backup Settings
+              {{ t('settings.data.title') }}
             </h2>
-            
             <div class="space-y-6">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <span>💾</span>
-                  <div>
-                    <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Auto Save</div>
-                    <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                      Automatically save changes
-                    </p>
-                  </div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input v-model="settings.data.autoSave" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
-              
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <span>📥</span>
-                  <div>
-                    <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Backup on Import</div>
-                    <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                      Create backup before importing new data
-                    </p>
-                  </div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input v-model="settings.data.backupOnImport" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
-              
+              <SettingsToggle v-model="settings.data.autoSave" icon="💾" :label="t('settings.data.autoSave')" :description="t('settings.data.autoSaveHint')" />
+              <SettingsToggle v-model="settings.data.backupOnImport" icon="📥" :label="t('settings.data.backupOnImport')" :description="t('settings.data.backupOnImportHint')" />
               <div class="flex flex-col gap-2">
-                <label class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  Number of Backups to Keep
+                <label for="backup-count" class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                  {{ t('settings.data.backupCount') }}: {{ settings.data.backupCount }}
                 </label>
-                <input
-                  v-model.number="settings.data.backupCount"
-                  type="range"
-                  min="1"
-                  max="20"
-                  class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                >
-                <div class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ settings.data.backupCount }}
-                </div>
+                <input id="backup-count" v-model.number="settings.data.backupCount" type="range" min="1" max="20" :class="rangeClass">
               </div>
             </div>
+          </div>
+
+          <div :class="cardClass">
+            <h3 class="text-lg font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+              {{ t('settings.data.backups') }}
+            </h3>
+            <div v-if="!adminAuth.isAdmin.value" class="space-y-3">
+              <p class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.data.backupsAdminOnly') }}</p>
+              <AdminLogin />
+            </div>
+            <p v-else-if="!backupsLoading && !backups.length" class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
+              {{ t('settings.data.backupsEmpty') }}
+            </p>
+            <table v-else-if="backups.length" class="w-full text-sm">
+              <thead>
+                <tr class="text-left border-b border-gray-200 dark:border-gray-700">
+                  <th class="py-2">{{ t('settings.data.backupCreated') }}</th>
+                  <th class="py-2">{{ t('settings.data.backupSize') }}</th>
+                  <th class="py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="backup in backups" :key="backup.id" class="border-b border-gray-100 dark:border-gray-700/50">
+                  <td class="py-2">{{ formatDate(backup.createdAt) }}</td>
+                  <td class="py-2">{{ formatSize(backup.size) }}</td>
+                  <td class="py-2 text-right">
+                    <button class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
-        
+
         <div v-if="activeSection === 'privacy'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div :class="cardClass">
             <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Privacy Settings
+              {{ t('settings.privacy.title') }}
             </h2>
-            
-            <div class="space-y-6">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <span>📤</span>
-                  <div>
-                    <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Share Data</div>
-                    <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                      Allow sharing of anonymized usage data
-                    </p>
-                  </div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input v-model="settings.privacy.shareData" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
-              
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <span>👤</span>
-                  <div>
-                    <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Anonymous Mode</div>
-                    <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                      Hide personal information in shared views
-                    </p>
-                  </div>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input v-model="settings.privacy.anonymousMode" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700 peer-checked:bg-primary-600"></div>
-                </label>
-              </div>
-            </div>
+            <SettingsToggle v-model="settings.privacy.anonymousMode" icon="👤" :label="t('settings.privacy.anonymous')" :description="t('settings.privacy.anonymousHint')" />
           </div>
-          
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div :class="cardClass">
             <h3 class="text-lg font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Data Privacy
+              {{ t('settings.privacy.dataTitle') }}
             </h3>
             <p class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-              Your GEDCOM data is processed locally in your browser. We do not store or transmit your personal data to our servers without your explicit consent.
+              {{ t('settings.privacy.dataText') }}
             </p>
           </div>
         </div>
-        
-        <div v-if="activeSection === 'about'" class="space-y-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              About Roots & Routes
-            </h2>
-            
-            <div class="space-y-4">
-              <div class="flex items-start gap-4">
-                <span class="text-3xl">🌳</span>
-                <div>
-                  <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                    Version 1.0.0
-                  </h3>
-                  <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                    Built with Nuxt 3, Vue.js, TypeScript, and Leaflet
-                  </p>
-                </div>
+
+        <div v-if="activeSection === 'about'" :class="cardClass">
+          <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            {{ t('settings.about.title') }}
+          </h2>
+          <div class="space-y-4">
+            <div class="flex items-start gap-4">
+              <span class="text-3xl">🌳</span>
+              <div>
+                <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('settings.about.version') }}</h3>
+                <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.about.built') }}</p>
               </div>
-              
-              <div class="flex items-start gap-4">
-                <span class="text-3xl">ℹ️</span>
-                <div>
-                  <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                    Features
-                  </h3>
-                  <ul class="text-sm list-disc list-inside mt-2 space-y-1" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                    <li>GEDCOM 5.5 and 7.0 support</li>
-                    <li>Interactive map visualization with Leaflet</li>
-                    <li>Family tree and chart views</li>
-                    <li>Event filtering and search</li>
-                  </ul>
-                </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <span class="text-3xl">ℹ️</span>
+              <div>
+                <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('settings.about.features') }}</h3>
+                <ul class="text-sm list-disc list-inside mt-2 space-y-1" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
+                  <li>{{ t('settings.about.f1') }}</li>
+                  <li>{{ t('settings.about.f2') }}</li>
+                  <li>{{ t('settings.about.f3') }}</li>
+                  <li>{{ t('settings.about.f4') }}</li>
+                </ul>
               </div>
             </div>
           </div>

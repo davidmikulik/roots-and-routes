@@ -60,7 +60,9 @@ export async function listFiles(prefix: string = ''): Promise<string[]> {
 
 export async function listUserFiles(userId?: string): Promise<UploadedFile[]> {
   const prefix = userId ? `${getUploadDir()}/${userId}` : getUploadDir()
-  const { blobs } = await list({ prefix, token: requireBlobToken() })
+  const { blobs: allBlobs } = await list({ prefix, token: requireBlobToken() })
+  // parsed/, exports/, backups/ and known-locations.json live under the same prefix but are not uploads
+  const blobs = allBlobs.filter(blob => /\.(ged|gedcom)$/i.test(blob.pathname) && !/\/(parsed|exports|backups)\//.test(blob.pathname))
   return blobs.map(blob => ({
     id: blob.pathname.split('/').pop()?.replace('.ged', '').replace('.gedcom', '') || '',
     name: blob.pathname.split('/').pop() || '',
@@ -146,4 +148,4 @@ export function formatFileSize(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
-export { getBlobToken, getUploadDir }
+export { getBlobToken, getUploadDir, requireBlobToken }

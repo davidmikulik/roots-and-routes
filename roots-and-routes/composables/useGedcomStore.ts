@@ -5,6 +5,7 @@ import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, crea
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { useSettings } from '~~/composables/useSettings'
 
 interface GedcomState {
   file: GedcomFile | null
@@ -13,6 +14,8 @@ interface GedcomState {
   userId: string | null
   isLoading: boolean
   error: string | null
+  // Edits that were not sent to the server yet (only when auto-save is off)
+  dirty: boolean
 }
 
 export interface GedcomDuplicate {
@@ -147,6 +150,7 @@ const createEmptyState = (): GedcomState => ({
   userId: null,
   isLoading: false,
   error: null,
+  dirty: false,
 })
 
 const normalizedName = (individual: GedcomIndividual): string => (individual.names[0]?.full || '')
@@ -195,6 +199,7 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
   const adminAuth = useAdminAuth()
+  const appSettings = useSettings()
 
   // Persist the current file to the server; needs the admin token and throws on failure
   const saveToServer = async (file: GedcomFile): Promise<void> => {
@@ -204,6 +209,19 @@ export const useGedcomStore = () => {
       headers: adminAuth.authHeaders(),
       body: { fileId: state.value.fileId, fileData: serializeGedcomFile(file) },
     })
+    state.value.dirty = false
+  }
+
+  // After an edit: send it to the server right away, or only remember it when auto-save is off
+  const persist = async (file: GedcomFile): Promise<void> => {
+    if (appSettings.settings.value.data.autoSave) await saveToServer(file)
+    else state.value.dirty = true
+  }
+
+  // Manual save for when auto-save is off
+  const saveNow = async (): Promise<void> => {
+    adminAuth.requireAdmin()
+    if (state.value.file) await saveToServer(state.value.file)
   }
 
   // Method to explicitly load data from server
@@ -228,6 +246,8 @@ export const useGedcomStore = () => {
     console.log('[GEDCOM] Initializing store...')
     onMounted(async () => {
       console.log('[GEDCOM] onMounted triggered, current hasData:', state.value.file !== null)
+      // Never replace edits that were not saved to the server yet
+      if (state.value.dirty) return
       // Always try to load from server first on each page load
       // This ensures all devices see the same (latest) data
       const loadedFromServer = await refreshFromServer()
@@ -261,13 +281,15 @@ export const useGedcomStore = () => {
 
   // Actions
   const setFile = (file: GedcomFile, parseResult: GedcomParseResult, fileId?: string, userId?: string) => {
+    // Edits call setFile without ids: keep the current ones, otherwise the file could never be saved to the server
     state.value = {
       file,
       parseResult,
-      fileId: fileId || null,
-      userId: userId || null,
+      fileId: fileId || state.value.fileId,
+      userId: userId || state.value.userId,
       isLoading: false,
-      error: null
+      error: null,
+      dirty: state.value.dirty
     }
   }
 
@@ -285,7 +307,7 @@ export const useGedcomStore = () => {
     }, state.value.fileId || undefined, state.value.userId || undefined)
     if (import.meta.client) {
       await saveContent(writeGedcom(file))
-      await saveToServer(file)
+      await persist(file)
     }
     return matched.length
   }
@@ -298,6 +320,8 @@ export const useGedcomStore = () => {
       const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
       applyKnownLocations(result.file, knownLocations)
       setFile(result.file, result, fileId, userId)
+      // The import endpoint already stored this file on the server
+      state.value.dirty = false
       if (import.meta.client) {
         try {
           await saveContent(writeGedcom(result.file))
@@ -341,6 +365,11 @@ export const useGedcomStore = () => {
 
   const mergeFile = async (incoming: GedcomFile, choices: Record<string, DuplicateChoice> = {}): Promise<void> => {
     adminAuth.requireAdmin()
+    const { backupOnImport, backupCount } = appSettings.settings.value.data
+    // Back up the server's tree before it is replaced by the merged one; a failed backup stops the merge
+    if (import.meta.client && backupOnImport) {
+      await $fetch('/api/admin/backups', { method: 'POST', headers: adminAuth.authHeaders(), body: { keep: backupCount } })
+    }
     const current = state.value.file
     if (!current) {
       const result: GedcomParseResult = {
@@ -464,7 +493,7 @@ export const useGedcomStore = () => {
     })
     if (import.meta.client) {
       await saveContent(writeGedcom(merged))
-      await saveToServer(merged)
+      await persist(merged)
     }
   }
 
@@ -570,7 +599,7 @@ export const useGedcomStore = () => {
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
       await saveContent(writeGedcom(file))
-      await saveToServer(file)
+      await persist(file)
     }
     return xrefId
   }
@@ -596,7 +625,7 @@ export const useGedcomStore = () => {
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
       await saveContent(writeGedcom(file))
-      await saveToServer(file)
+      await persist(file)
     }
   }
 
@@ -689,6 +718,7 @@ export const useGedcomStore = () => {
     setError,
     setLoading,
     refreshFromServer,
+    saveNow,
     
     // Helpers
     getAllAppPersons,

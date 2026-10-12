@@ -2,11 +2,13 @@
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { useT } from '~~/composables/useT'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import type { KnownLocation } from '~~/types/locations'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
+const { t } = useT()
 const gedcomStore = useGedcomStore()
 const adminAuth = useAdminAuth()
 const locations = ref<KnownLocation[]>([])
@@ -39,7 +41,7 @@ const loadLocations = async () => {
     isConnected.value = true
   } catch (error: any) {
     isConnected.value = false
-    errorMessage.value = error.data?.statusMessage || error.message || 'Unable to load locations.'
+    errorMessage.value = error.data?.statusMessage || error.message || t('locations.error.load')
   } finally {
     isLoading.value = false
   }
@@ -62,11 +64,11 @@ const addLocation = () => {
   if (!name || draft.latitude === null || draft.longitude === null
     || !Number.isFinite(draft.latitude) || !Number.isFinite(draft.longitude)
     || Math.abs(draft.latitude) > 90 || Math.abs(draft.longitude) > 180) {
-    errorMessage.value = 'Enter a location name, latitude between -90 and 90, and longitude between -180 and 180.'
+    errorMessage.value = t('locations.error.invalidDraft')
     return
   }
   if (locations.value.some(location => location.name.localeCompare(name, undefined, { sensitivity: 'base' }) === 0)) {
-    errorMessage.value = 'A location with this name already exists.'
+    errorMessage.value = t('locations.error.duplicate')
     return
   }
   locations.value.push({ name, latitude: draft.latitude, longitude: draft.longitude })
@@ -88,9 +90,9 @@ const saveLocations = async () => {
       body: { locations: locations.value },
     })
     const refreshedLocations = await gedcomStore.refreshLocationCoordinates(locations.value)
-    successMessage.value = `Saved ${response.count} locations. Updated ${refreshedLocations} locations in the current tree.`
+    successMessage.value = t('locations.success.saved', { saved: response.count, updated: refreshedLocations })
   } catch (error: any) {
-    errorMessage.value = error.data?.statusMessage || error.message || 'Unable to save locations.'
+    errorMessage.value = error.data?.statusMessage || error.message || t('locations.error.save')
   } finally {
     isSaving.value = false
   }
@@ -98,7 +100,7 @@ const saveLocations = async () => {
 
 const exportLocations = (format: 'csv' | 'json') => {
   if (locations.value.length === 0) {
-    errorMessage.value = 'No locations to export.'
+    errorMessage.value = t('locations.error.noExport')
     return
   }
 
@@ -131,7 +133,7 @@ const exportLocations = (format: 'csv' | 'json') => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }
-  successMessage.value = `Exported ${locations.value.length} locations as ${format.toUpperCase()}.`
+  successMessage.value = t('locations.success.exported', { count: locations.value.length, format: format.toUpperCase() })
 }
 
 const parseCSV = (content: string): KnownLocation[] => {
@@ -144,7 +146,7 @@ const parseCSV = (content: string): KnownLocation[] => {
   const lonIndex = headers.findIndex(h => h.toLowerCase().includes('longitude'))
   
   if (nameIndex === -1 || latIndex === -1 || lonIndex === -1) {
-    throw new Error('CSV must contain Name, Latitude, and Longitude columns')
+    throw new Error(t('locations.error.csvColumns'))
   }
   
   const result: KnownLocation[] = []
@@ -205,12 +207,12 @@ const handleImport = async (event: Event) => {
     } else if (file.name.endsWith('.json')) {
       newLocations = parseJSON(content)
     } else {
-      errorMessage.value = 'Please upload a CSV or JSON file.'
+      errorMessage.value = t('locations.error.badFileType')
       return
     }
     
     if (newLocations.length === 0) {
-      errorMessage.value = 'No valid locations found in the file.'
+      errorMessage.value = t('locations.error.noValid')
       return
     }
     
@@ -227,12 +229,12 @@ const handleImport = async (event: Event) => {
     
     if (addedCount > 0) {
       locations.value.sort((first, second) => first.name.localeCompare(second.name))
-      successMessage.value = `Imported ${addedCount} new locations. ${newLocations.length - addedCount} duplicates skipped.`
+      successMessage.value = t('locations.success.imported', { added: addedCount, skipped: newLocations.length - addedCount })
     } else {
-      errorMessage.value = 'All locations in the file already exist.'
+      errorMessage.value = t('locations.error.allExist')
     }
   } catch (error: any) {
-    errorMessage.value = error.message || 'Failed to import file.'
+    errorMessage.value = error.message || t('locations.error.import')
   } finally {
     isImporting.value = false
     input.value = ''
@@ -244,17 +246,17 @@ const handleImport = async (event: Event) => {
   <div class="min-h-screen">
     <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="text-sm font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-300">Administration</p>
-        <h1 class="mt-1 text-3xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">Known locations</h1>
-        <p class="mt-2 text-sm opacity-70">Manage place names and their latitude/longitude used during GEDCOM import.</p>
+        <p class="text-sm font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-300">{{ t('locations.admin') }}</p>
+        <h1 class="mt-1 text-3xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('locations.title') }}</h1>
+        <p class="mt-2 text-sm opacity-70">{{ t('locations.subtitle') }}</p>
       </div>
-      <NuxtLink to="/settings" class="text-sm underline">Back to settings</NuxtLink>
+      <NuxtLink to="/settings" class="text-sm underline">{{ t('locations.back') }}</NuxtLink>
     </header>
 
     <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
       <AdminLogin />
       <button v-if="adminAuth.isAdmin.value" type="button" :disabled="isLoading" class="mt-3 rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60" @click="loadLocations">
-        {{ isLoading ? 'Loading…' : isConnected ? 'Reload locations' : 'Load locations' }}
+        {{ isLoading ? t('locations.loading') : isConnected ? t('locations.reload') : t('locations.load') }}
       </button>
     </section>
 
@@ -263,37 +265,37 @@ const handleImport = async (event: Event) => {
 
     <template v-if="isConnected && adminAuth.isAdmin.value">
       <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
-        <h2 class="mb-4 text-lg font-semibold">Add location</h2>
+        <h2 class="mb-4 text-lg font-semibold">{{ t('locations.add.title') }}</h2>
         <form class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px_auto]" @submit.prevent="addLocation">
-          <label class="text-sm">Place name
-            <input v-model="draft.name" required maxlength="300" class="mt-1 w-full rounded border px-3 py-2" placeholder="Prague, Czech Republic">
+          <label class="text-sm">{{ t('locations.add.name') }}
+            <input v-model="draft.name" required maxlength="300" class="mt-1 w-full rounded border px-3 py-2" :placeholder="t('locations.add.namePlaceholder')">
           </label>
-          <label class="text-sm">Latitude
+          <label class="text-sm">{{ t('locations.add.latitude') }}
             <input v-model.number="draft.latitude" @paste="pasteCoordinates($event, draft)" required type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2" placeholder="50.0755">
           </label>
-          <label class="text-sm">Longitude
+          <label class="text-sm">{{ t('locations.add.longitude') }}
             <input v-model.number="draft.longitude" @paste="pasteCoordinates($event, draft)" required type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2" placeholder="14.4378">
           </label>
-          <button type="submit" class="self-end rounded border px-4 py-2 font-medium">Add</button>
+          <button type="submit" class="self-end rounded border px-4 py-2 font-medium">{{ t('locations.add.button') }}</button>
         </form>
       </section>
 
       <section class="overflow-hidden rounded-lg border" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
         <div class="flex items-center justify-between gap-3 border-b p-4" :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }">
-          <h2 class="font-semibold">{{ locations.length }} locations</h2>
+          <h2 class="font-semibold">{{ t('locations.count', { count: locations.length }) }}</h2>
           <div class="flex items-center gap-2">
             <button @click="saveLocations" :disabled="isSaving" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
-              {{ isSaving ? 'Saving?' : 'Save changes' }}
+              {{ isSaving ? t('locations.saving') : t('locations.save') }}
             </button>
-            <button @click="triggerFileImport" :disabled="isImporting" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Import from CSV or JSON">
-              {{ isImporting ? 'Importing...' : 'Import' }}
+            <button @click="triggerFileImport" :disabled="isImporting" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" :title="t('locations.importTitle')">
+              {{ isImporting ? t('locations.importing') : t('locations.import') }}
             </button>
             <input ref="fileInput" type="file" accept=".csv,.json" class="hidden" @change="handleImport">
-            <button @click="exportLocations('csv')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Export as CSV">
-              Export CSV
+            <button @click="exportLocations('csv')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" :title="t('locations.exportCsvTitle')">
+              {{ t('locations.exportCsv') }}
             </button>
-            <button @click="exportLocations('json')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Export as JSON">
-              Export JSON
+            <button @click="exportLocations('json')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" :title="t('locations.exportJsonTitle')">
+              {{ t('locations.exportJson') }}
             </button>
           </div>
         </div>
@@ -301,30 +303,30 @@ const handleImport = async (event: Event) => {
           <table class="w-full min-w-[680px] text-left text-sm">
             <thead class="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                <th class="px-4 py-3 font-semibold">Place</th>
-                <th class="w-48 px-4 py-3 font-semibold">Latitude</th>
-                <th class="w-48 px-4 py-3 font-semibold">Longitude</th>
-                <th class="w-24 px-4 py-3 text-right font-semibold">Action</th>
+                <th class="px-4 py-3 font-semibold">{{ t('locations.table.place') }}</th>
+                <th class="w-48 px-4 py-3 font-semibold">{{ t('locations.table.latitude') }}</th>
+                <th class="w-48 px-4 py-3 font-semibold">{{ t('locations.table.longitude') }}</th>
+                <th class="w-24 px-4 py-3 text-right font-semibold">{{ t('locations.table.action') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(location, index) in locations" :key="`${location.name}-${index}`" class="border-t border-gray-100 dark:border-gray-700">
                 <td class="px-4 py-2">
-                  <input v-model="location.name" required maxlength="300" class="w-full rounded border px-3 py-2" :aria-label="`Location name ${index + 1}`">
-                  <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">Coordinates needed</span>
+                  <input v-model="location.name" required maxlength="300" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.nameAria', { index: index + 1 })">
+                  <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">{{ t('locations.table.coordsNeeded') }}</span>
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.latitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="`Latitude for ${location.name}`" placeholder="Pending">
+                  <input v-model.number="location.latitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.latitudeAria', { name: location.name })" :placeholder="t('locations.table.pending')">
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.longitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="`Longitude for ${location.name}`" placeholder="Pending">
+                  <input v-model.number="location.longitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.longitudeAria', { name: location.name })" :placeholder="t('locations.table.pending')">
                 </td>
                 <td class="px-4 py-2 text-right">
-                  <button @click="locations.splice(index, 1)" class="text-red-700 underline dark:text-red-300" :aria-label="`Remove ${location.name}`">Remove</button>
+                  <button @click="locations.splice(index, 1)" class="text-red-700 underline dark:text-red-300" :aria-label="t('locations.table.removeAria', { name: location.name })">{{ t('locations.table.remove') }}</button>
                 </td>
               </tr>
               <tr v-if="locations.length === 0">
-                <td colspan="4" class="px-4 py-12 text-center opacity-60">No known locations yet. Add one above.</td>
+                <td colspan="4" class="px-4 py-12 text-center opacity-60">{{ t('locations.table.empty') }}</td>
               </tr>
             </tbody>
           </table>

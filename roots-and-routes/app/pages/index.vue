@@ -1,36 +1,18 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
+import { useT } from '~~/composables/useT'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
-const welcomeMessage = ref('Discover your roots...')
-const features = [
-  {
-    icon: '🗺️',
-    title: 'Map Visualization',
-    description: 'View your family history on interactive maps with birth, marriage, and death locations',
-    route: '/map',
-  },
-  {
-    icon: '🌳',
-    title: 'Family Tree',
-    description: 'Explore your genealogy with beautiful tree and chart visualizations',
-    route: '/tree',
-  },
-  {
-    icon: '📄',
-    title: 'GEDCOM Import/Export',
-    description: 'Import GEDCOM files or export your family tree in standard format',
-    route: '/gedcom',
-  },
-  {
-    icon: '🔍',
-    title: 'Search & Filter',
-    description: 'Find ancestors by name, date, or location with powerful search tools',
-    route: '/tree',
-  },
-]
+const { t } = useT()
+
+const features = computed(() => [
+  { icon: '🗺️', title: t('home.feature.map.title'), description: t('home.feature.map.desc'), route: '/map' },
+  { icon: '🌳', title: t('home.feature.tree.title'), description: t('home.feature.tree.desc'), route: '/tree' },
+  { icon: '📄', title: t('home.feature.gedcom.title'), description: t('home.feature.gedcom.desc'), route: '/gedcom' },
+  { icon: '🔍', title: t('home.feature.search.title'), description: t('home.feature.search.desc'), route: '/tree' },
+])
 </script>
 
 <template>
@@ -44,12 +26,11 @@ const features = [
         </h1>
         
         <p class="text-xl md:text-2xl mb-4" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-          {{ welcomeMessage }}
+          {{ t('home.welcome') }}
         </p>
         
         <p class="text-lg opacity-80 max-w-2xl mx-auto mb-12" :class="{ 'text-gray-400': isDark, 'text-gray-500': !isDark }">
-          A comprehensive genealogy application for visualizing your family tree on maps.
-          Import GEDCOM files, explore your ancestry, and discover the geographic history of your family.
+          {{ t('home.intro') }}
         </p>
         
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
@@ -58,7 +39,7 @@ const features = [
             class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl bg-primary-600 hover:bg-primary-700 text-white"
           >
             <span class="mr-2">📁</span>
-            Import GEDCOM
+            {{ t('home.importGedcom') }}
           </NuxtLink>
           
           <NuxtLink
@@ -70,7 +51,7 @@ const features = [
             }"
           >
             <span class="mr-2">🗺️</span>
-            View Map
+            {{ t('home.viewMap') }}
           </NuxtLink>
         </div>
       </div>
@@ -79,7 +60,7 @@ const features = [
     <section class="py-16 px-4 sm:px-6 lg:px-8" :class="{ 'bg-gray-800': isDark, 'bg-gray-50': !isDark }">
       <div class="max-w-7xl mx-auto">
         <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-          Core Features
+          {{ t('home.coreFeatures') }}
         </h2>
         
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -107,7 +88,7 @@ const features = [
     <section class="py-16 px-4 sm:px-6 lg:px-8">
       <div class="max-w-7xl mx-auto">
         <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-          How It Works
+          {{ t('home.howItWorks') }}
         </h2>
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-12 items-center">
@@ -116,10 +97,10 @@ const features = [
               <span class="text-4xl">1</span>
             </div>
             <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Import Your Data
+              {{ t('home.step1.title') }}
             </h3>
             <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              Upload your GEDCOM file from ancestry websites or genealogy software.
+              {{ t('home.step1.desc') }}
             </p>
           </div>
           
@@ -128,10 +109,10 @@ const features = [
               <span class="text-4xl">2</span>
             </div>
             <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Explore Your Tree
+              {{ t('home.step2.title') }}
             </h3>
             <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              Browse your family tree with interactive visualizations.
+              {{ t('home.step2.desc') }}
             </p>
           </div>
           
@@ -140,10 +121,10 @@ const features = [
               <span class="text-4xl">3</span>
             </div>
             <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              Visualize on Map
+              {{ t('home.step3.title') }}
             </h3>
             <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              See your ancestors' journeys on interactive maps.
+              {{ t('home.step3.desc') }}
             </p>
           </div>
         </div>
@@ -153,10 +134,10 @@ const features = [
     <section class="py-16 px-4 sm:px-6 lg:px-8" :class="{ 'bg-gray-800': isDark, 'bg-gray-50': !isDark }">
       <div class="max-w-7xl mx-auto">
         <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-          Ready to Explore Your Family History?
+          {{ t('home.ctaTitle') }}
         </h2>
         <p class="text-lg opacity-80 mb-8 max-w-2xl mx-auto text-center" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-          Start by importing your GEDCOM file and discover the fascinating journey of your ancestors.
+          {{ t('home.ctaText') }}
         </p>
         <div class="text-center">
           <NuxtLink
@@ -164,7 +145,7 @@ const features = [
             class="inline-flex items-center justify-center px-10 py-4 text-xl font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
           >
             <span class="mr-3">🚀</span>
-            Get Started
+            {{ t('home.getStarted') }}
           </NuxtLink>
         </div>
       </div>

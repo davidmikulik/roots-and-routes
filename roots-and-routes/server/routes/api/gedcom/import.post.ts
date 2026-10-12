@@ -2,6 +2,7 @@
 import { parseGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations, getUniqueGedcomLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
 import { validateFileSize, isGedcomFile, saveParsedGedcom, uploadGedcomFile } from '~~/server/utils/storage'
+import { createBackup, clampBackupCount } from '~~/server/utils/backups'
 import { loadKnownLocations, saveKnownLocations } from '~~/server/utils/locationStorage'
 import type { GedcomParseResult, GedcomFile } from '~~/types'
 import type { UploadedFile } from '~~/types'
@@ -15,7 +16,11 @@ export default defineEventHandler(async (event) => {
   try {
     const body = await readMultipartFormData(event)
     if (!body || !body.length) throw createError({ statusCode: 400, statusMessage: 'No file uploaded' })
-    const fileData = body[0]
+    // The file part has a filename; the other parts are plain form fields (mode, backupOnImport, backupCount)
+    const fileData = body.find(part => part.filename)
+    const field = (name: string): string => body.find(part => part.name === name && !part.filename)?.data.toString('utf8') || ''
+    // 'merge' only analyses the file: the client merges it with the current tree and saves the result itself
+    const analyseOnly = field('mode') === 'merge'
     if (!fileData) throw createError({ statusCode: 400, statusMessage: 'No file provided' })
     const file = fileData.data
     const filename = fileData.filename || 'unknown.ged'
@@ -47,19 +52,28 @@ export default defineEventHandler(async (event) => {
       await saveKnownLocations([...locationCatalog.values()])
     }
     
-    importStage = 'saving GEDCOM file to server'
     // Use a fixed file ID for single-user mode
     const fixedFileId = 'current'
-    const uploadedFile: UploadedFile = await uploadGedcomFile(file, filename, { overwrite: true, fileId: fixedFileId })
-    
-    importStage = 'saving parsed GEDCOM data to server'
-    await saveParsedGedcom(parseResult.file, fixedFileId)
-    
+    let uploadedFile: UploadedFile | null = null
+    let backupId: string | null = null
+    if (!analyseOnly) {
+      if (field('backupOnImport') === 'true') {
+        importStage = 'backing up the current tree'
+        backupId = await createBackup(clampBackupCount(field('backupCount')))
+      }
+      importStage = 'saving GEDCOM file to server'
+      uploadedFile = await uploadGedcomFile(file, filename, { overwrite: true, fileId: fixedFileId })
+
+      importStage = 'saving parsed GEDCOM data to server'
+      await saveParsedGedcom(parseResult.file, fixedFileId)
+    }
+
     return {
       success: true,
       message: 'GEDCOM file imported successfully',
       data: {
-        file: { id: uploadedFile.id, name: uploadedFile.name, path: uploadedFile.path },
+        file: { id: fixedFileId, name: uploadedFile?.name || filename, path: uploadedFile?.path },
+        backupId,
         locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations, added: addedLocations },
       },
       timestamp: new Date().toISOString(),

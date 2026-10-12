@@ -1,29 +1,47 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { useSettings } from '~~/composables/useSettings'
+import { useT } from '~~/composables/useT'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const route = useRoute()
 const adminAuth = useAdminAuth()
+const appSettings = useSettings()
+const { t } = useT()
 const adminPanelOpen = ref(false)
+// The store keeps unsaved edits here when auto-save is off (see useGedcomStore)
+const gedcomState = useState<{ dirty?: boolean } | null>('gedcom-store')
 
-// Restore the saved token after hydration (pages are prerendered without it)
-onMounted(() => adminAuth.restore())
+// Restore saved token and settings after hydration (pages are prerendered without them)
+onMounted(() => {
+  adminAuth.restore()
+  appSettings.restore()
+  window.addEventListener('beforeunload', (event) => {
+    if (gedcomState.value?.dirty) event.preventDefault()
+  })
+})
+
+const toggleDark = () => {
+  colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
+}
 const pageTitle = computed(() => {
   switch (route.path) {
-    case '/': return 'Home'
-    case '/map': return 'Map Visualization'
-    case '/tree': return 'Family Tree'
-    case '/gedcom': return 'GEDCOM Import/Export'
-    case '/settings': return 'Settings'
-    default: return 'Roots & Routes'
+    case '/': return t('title.home')
+    case '/map': return t('title.map')
+    case '/tree': return t('title.tree')
+    case '/gedcom': return t('title.gedcom')
+    case '/settings': return t('title.settings')
+    case '/admin/locations': return t('title.locations')
+    default: return t('app.name')
   }
 })
 
 useHead({
-  title: computed(() => `${pageTitle.value} | Roots & Routes`),
+  htmlAttrs: { lang: computed(() => appSettings.settings.value.language) },
+  title: computed(() => `${pageTitle.value} | ${t('app.name')}`),
 })
 </script>
 
@@ -38,10 +56,10 @@ useHead({
             </div>
             <div>
               <h1 class="text-xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                Roots & Routes
+                {{ t('app.name') }}
               </h1>
               <p class="text-sm opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-                Genealogy Visualization
+                {{ t('app.tagline') }}
               </p>
             </div>
           </div>
@@ -55,7 +73,7 @@ useHead({
                 'text-white hover:text-primary-400': isDark && route.path !== '/',
                 'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/',
               }"
-            >Home</NuxtLink>
+            >{{ t('nav.home') }}</NuxtLink>
             <NuxtLink
               to="/map"
               class="transition-colors duration-200 font-medium"
@@ -64,7 +82,7 @@ useHead({
                 'text-white hover:text-primary-400': isDark && route.path !== '/map',
                 'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/map',
               }"
-            >Map</NuxtLink>
+            >{{ t('nav.map') }}</NuxtLink>
             <NuxtLink
               to="/tree"
               class="transition-colors duration-200 font-medium"
@@ -73,7 +91,7 @@ useHead({
                 'text-white hover:text-primary-400': isDark && route.path !== '/tree',
                 'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/tree',
               }"
-            >Tree</NuxtLink>
+            >{{ t('nav.tree') }}</NuxtLink>
             <NuxtLink
               to="/gedcom"
               class="transition-colors duration-200 font-medium"
@@ -82,7 +100,7 @@ useHead({
                 'text-white hover:text-primary-400': isDark && route.path !== '/gedcom',
                 'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/gedcom',
               }"
-            >GEDCOM</NuxtLink>
+            >{{ t('nav.gedcom') }}</NuxtLink>
           </nav>
 
           <div class="relative flex items-center space-x-4">
@@ -93,8 +111,8 @@ useHead({
                 'bg-gray-700 hover:bg-gray-600': isDark,
                 'bg-gray-200 hover:bg-gray-300': !isDark,
               }"
-              :aria-label="adminAuth.isAdmin.value ? 'Administrator mode' : 'Administrator login'"
-              :title="adminAuth.isAdmin.value ? 'Administrator mode' : 'Administrator login'"
+              :aria-label="adminAuth.isAdmin.value ? t('admin.mode') : t('admin.login')"
+              :title="adminAuth.isAdmin.value ? t('admin.mode') : t('admin.login')"
             >
               <span class="text-xl">{{ adminAuth.isAdmin.value ? '🔓' : '🔒' }}</span>
             </button>
@@ -106,18 +124,20 @@ useHead({
               <AdminLogin @done="adminPanelOpen = false" />
             </div>
             <button
-              @click="colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'"
+              @click="toggleDark"
               class="p-2 rounded-full transition-colors duration-200"
               :class="{
                 'bg-gray-700 hover:bg-gray-600': isDark,
                 'bg-gray-200 hover:bg-gray-300': !isDark,
               }"
-              aria-label="Toggle dark mode"
+              :aria-label="t('nav.toggleDark')"
             >
               <span class="text-xl">{{ isDark ? '🌙' : '☀️' }}</span>
             </button>
             <NuxtLink
               to="/settings"
+              :aria-label="t('nav.settings')"
+              :title="t('nav.settings')"
               class="p-2 rounded-full transition-colors duration-200"
               :class="{
                 'bg-gray-700 hover:bg-gray-600': isDark,
@@ -138,9 +158,9 @@ useHead({
     <footer class="mt-16 py-8 border-t" :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center text-sm opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-          <p>© {{ new Date().getFullYear() }} Roots & Routes. All rights reserved.</p>
+          <p>© {{ new Date().getFullYear() }} {{ t('app.name') }}. {{ t('footer.rights') }}</p>
           <p class="mt-1">
-            Built with Nuxt 3, Vue.js, and Leaflet.
+            {{ t('footer.builtWith') }}
           </p>
         </div>
       </div>

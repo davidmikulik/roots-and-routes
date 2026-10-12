@@ -3,6 +3,7 @@ import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, Gedc
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
+import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 
 interface GedcomState {
   file: GedcomFile | null
@@ -107,7 +108,7 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
     const response = await $fetch<{
       success: boolean
       data: {
-        file: GedcomFile
+        file: SerializedGedcomFile
         fileInfo: { id: string; name: string; createdAt?: Date }
       }
     }>(url)
@@ -118,19 +119,20 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
       return null
     }
     
-    // Create a parse result from the loaded file
+    // Server sends Maps as entry arrays, restore them
+    const file = deserializeGedcomFile(response.data.file)
     const parseResult: GedcomParseResult = {
-      file: response.data.file,
+      file,
       warnings: [],
       errors: [],
       stats: {
         linesProcessed: 0,
-        recordsCreated: response.data.file.metadata.totalIndividuals + response.data.file.metadata.totalFamilies,
+        recordsCreated: file.individuals.size + file.families.size,
         parsingTime: 0
       }
     }
     
-    return { file: response.data.file, parseResult, fileId: response.data.fileInfo.id }
+    return { file, parseResult, fileId: response.data.fileInfo.id }
   } catch (error) {
     console.error('[GEDCOM] Failed to load GEDCOM from server:', error)
     return null
@@ -452,7 +454,7 @@ export const useGedcomStore = () => {
             method: 'POST',
             body: {
               fileId: state.value.fileId,
-              fileData: merged
+              fileData: serializeGedcomFile(merged)
             }
           })
         } catch (error) {
@@ -570,7 +572,7 @@ export const useGedcomStore = () => {
             method: 'POST',
             body: {
               fileId: state.value.fileId,
-              fileData: file
+              fileData: serializeGedcomFile(file)
             }
           })
         } catch (error) {
@@ -608,7 +610,7 @@ export const useGedcomStore = () => {
             method: 'POST',
             body: {
               fileId: state.value.fileId,
-              fileData: file
+              fileData: serializeGedcomFile(file)
             }
           })
         } catch (error) {

@@ -1,6 +1,7 @@
 // Vercel Blob Storage Utilities
 import { put, get, del, list, head } from '@vercel/blob'
-import type { GedcomFile, GedcomParseResult, UploadedFile, GedcomIndividual, GedcomFamily, GedcomSource, GedcomRepository, GedcomMultimedia, GedcomNote } from '~~/types'
+import type { GedcomFile, UploadedFile } from '~~/types'
+import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 
 const getBlobToken = (): string => 
   useRuntimeConfig().vercelBlob?.token || 
@@ -13,60 +14,6 @@ const requireBlobToken = (): string => {
   const token = getBlobToken()
   if (!token) throw createError({ statusCode: 503, statusMessage: 'BLOB_READ_WRITE_TOKEN is not configured' })
   return token
-}
-
-// Serialization helpers for GedcomFile
-// Maps are not serializable by JSON.stringify, so we need to convert them
-interface SerializedGedcomFile {
-  version: string
-  encoding: string
-  source: string
-  date: string
-  copyright?: string
-  individuals: [string, GedcomIndividual][]
-  families: [string, GedcomFamily][]
-  sources: [string, GedcomSource][]
-  repositories: [string, GedcomRepository][]
-  multimedia: [string, GedcomMultimedia][]
-  notes: [string, GedcomNote][]
-  metadata: any
-  rawLines?: any[]
-}
-
-function serializeGedcomFile(file: GedcomFile): SerializedGedcomFile {
-  return {
-    version: file.version,
-    encoding: file.encoding,
-    source: file.source,
-    date: file.date.toISOString(),
-    copyright: file.copyright,
-    individuals: Array.from(file.individuals.entries()),
-    families: Array.from(file.families.entries()),
-    sources: Array.from(file.sources.entries()),
-    repositories: Array.from(file.repositories.entries()),
-    multimedia: Array.from(file.multimedia.entries()),
-    notes: Array.from(file.notes.entries()),
-    metadata: file.metadata,
-    rawLines: file.rawLines,
-  }
-}
-
-function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomFile {
-  return {
-    version: serialized.version,
-    encoding: serialized.encoding,
-    source: serialized.source,
-    date: new Date(serialized.date),
-    copyright: serialized.copyright,
-    individuals: new Map(serialized.individuals),
-    families: new Map(serialized.families),
-    sources: new Map(serialized.sources),
-    repositories: new Map(serialized.repositories),
-    multimedia: new Map(serialized.multimedia),
-    notes: new Map(serialized.notes),
-    metadata: serialized.metadata,
-    rawLines: serialized.rawLines,
-  }
 }
 
 export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; fileId?: string; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {

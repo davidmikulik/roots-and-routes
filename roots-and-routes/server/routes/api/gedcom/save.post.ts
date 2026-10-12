@@ -1,10 +1,10 @@
 // GEDCOM Save API Endpoint - save parsed GEDCOM data to server
 import { saveParsedGedcom } from '~~/server/utils/storage'
-import type { GedcomFile } from '~~/types'
+import { deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 
 export default defineEventHandler(async (event) => {
   try {
-    const body = await readBody<{ fileId: string; fileData: GedcomFile }>(event)
+    const body = await readBody<{ fileId: string; fileData: SerializedGedcomFile }>(event)
     
     if (!body.fileId) {
       throw createError({ statusCode: 400, statusMessage: 'fileId is required' })
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'fileData is required' })
     }
     
-    await saveParsedGedcom(body.fileData, body.fileId)
+    await saveParsedGedcom(deserializeGedcomFile(body.fileData), body.fileId)
     
     return {
       success: true,

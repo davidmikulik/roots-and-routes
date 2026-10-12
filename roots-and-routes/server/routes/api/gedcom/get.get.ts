@@ -1,6 +1,7 @@
 // GEDCOM Get API Endpoint - retrieve saved GEDCOM data
 import { loadParsedGedcom, listUserFiles, getFileText } from '~~/server/utils/storage'
 import { parseGedcom } from '~~/utils/gedcom/parser'
+import { serializeGedcomFile } from '~~/utils/gedcom/serialize'
 import type { GedcomFile, GedcomParseResult } from '~~/types'
 
 // Helper function to re-parse original GEDCOM file if parsed data is corrupted
@@ -181,7 +182,8 @@ export default defineEventHandler(async (event) => {
       success: true,
       message: 'GEDCOM data loaded successfully',
       data: {
-        file: gedcomData,
+        // Maps would be lost in JSON (become {}), send them as entry arrays
+        file: serializeGedcomFile(gedcomData),
         fileInfo
       },
       timestamp: new Date().toISOString(),

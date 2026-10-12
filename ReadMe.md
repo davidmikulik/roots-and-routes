@@ -62,9 +62,7 @@ Vercel (Free tier – ideální pro Nuxt 3 full-stack aplikace a bezserverové A
 
 ## 🚀 Jak začít (Development Setup)
 
-*Tato sekce bude doplněna po zvolení konkrétního tech stacku.*
 
-```bash
 # Klonování repozitáře
 git clone https://gitlab.com/your-username/roots-and-routes.git
 cd roots-and-routes

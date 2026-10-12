@@ -3,6 +3,7 @@ import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import type { IndividualDraft } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
 
 const colorMode = useColorMode()
@@ -191,6 +192,15 @@ const openPersonEditor = (person?: AppPerson) => {
 
 const addEvent = () => personForm.value.events.push(createEmptyEventDraft())
 const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
+
+// Pasting "lat, lng" into either coordinate field fills both fields
+const pasteCoordinates = (event: ClipboardEvent, target: Record<string, any>, latitudeKey: string, longitudeKey: string) => {
+  const pair = parseCoordinatePair(event.clipboardData?.getData('text') || '')
+  if (!pair) return
+  event.preventDefault()
+  target[latitudeKey] = String(pair[0])
+  target[longitudeKey] = String(pair[1])
+}
 
 const errorText = (error: any): string => error?.data?.statusMessage || error?.message || 'Unknown error'
 
@@ -561,10 +571,10 @@ const deletePerson = async (person: AppPerson) => {
             <input v-model="personForm.birthPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Birth latitude
-            <input v-model="personForm.birthLatitude" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+            <input v-model="personForm.birthLatitude" @paste="pasteCoordinates($event, personForm, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Birth longitude
-            <input v-model="personForm.birthLongitude" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+            <input v-model="personForm.birthLongitude" @paste="pasteCoordinates($event, personForm, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Death date
             <input v-model="personForm.deathDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
@@ -573,10 +583,10 @@ const deletePerson = async (person: AppPerson) => {
             <input v-model="personForm.deathPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Death latitude
-            <input v-model="personForm.deathLatitude" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+            <input v-model="personForm.deathLatitude" @paste="pasteCoordinates($event, personForm, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Death longitude
-            <input v-model="personForm.deathLongitude" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+            <input v-model="personForm.deathLongitude" @paste="pasteCoordinates($event, personForm, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
           <label class="text-sm">Father
             <select v-model="personForm.fatherId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
@@ -604,10 +614,10 @@ const deletePerson = async (person: AppPerson) => {
               <input v-model="personForm.marriagePlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
             </label>
             <label class="text-sm">Marriage latitude
-              <input v-model="personForm.marriageLatitude" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+              <input v-model="personForm.marriageLatitude" @paste="pasteCoordinates($event, personForm, 'marriageLatitude', 'marriageLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
             </label>
             <label class="text-sm">Marriage longitude
-              <input v-model="personForm.marriageLongitude" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
+              <input v-model="personForm.marriageLongitude" @paste="pasteCoordinates($event, personForm, 'marriageLatitude', 'marriageLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
             </label>
           </div>
           <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
@@ -622,9 +632,9 @@ const deletePerson = async (person: AppPerson) => {
               <input v-model="event.date" type="date" class="rounded border px-3 py-2 bg-transparent" aria-label="Event date">
               <input v-model="event.place" class="rounded border px-3 py-2 bg-transparent" placeholder="Place">
               <input v-model="event.description" class="rounded border px-3 py-2 bg-transparent" placeholder="Description">
-              <input v-model="event.latitude" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" placeholder="Latitude">
+              <input v-model="event.latitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" placeholder="Latitude">
               <div class="flex gap-2">
-                <input v-model="event.longitude" type="number" step="any" min="-180" max="180" class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" placeholder="Longitude">
+                <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" placeholder="Longitude">
                 <button type="button" @click="removeEvent(index)" class="px-3 text-red-600" :aria-label="`Remove event ${index + 1}`">&times;</button>
               </div>
             </div>

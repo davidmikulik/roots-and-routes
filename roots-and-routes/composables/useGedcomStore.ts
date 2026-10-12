@@ -99,16 +99,17 @@ const deleteContent = async (): Promise<void> => {
   database.close()
 }
 
-const loadFromServer = async (): Promise<{ file: GedcomFile; parseResult: GedcomParseResult } | null> => {
+const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; parseResult: GedcomParseResult; fileId: string } | null> => {
   if (!import.meta.client) return null
   try {
+    const url = fileId ? `/api/gedcom/get?fileId=${fileId}` : '/api/gedcom/get'
     const response = await $fetch<{
       success: boolean
       data: {
         file: GedcomFile
-        fileInfo: { id: string; name: string; createdAt: Date }
+        fileInfo: { id: string; name: string; createdAt?: Date }
       }
-    }>('/api/gedcom/get')
+    }>(url)
     
     if (!response.success || !response.data?.file) {
       return null
@@ -126,7 +127,7 @@ const loadFromServer = async (): Promise<{ file: GedcomFile; parseResult: Gedcom
       }
     }
     
-    return { file: response.data.file, parseResult }
+    return { file: response.data.file, parseResult, fileId: response.data.fileInfo.id }
   } catch (error) {
     console.error('Failed to load GEDCOM from server:', error)
     return null
@@ -192,30 +193,26 @@ export const useGedcomStore = () => {
   if (import.meta.client && !restored.value) {
     restored.value = true
     onMounted(async () => {
-      if (state.value.file) return
+      // Always try to load from server first, ignoring any local fileId
+      // This ensures all devices see the same (latest) data
       try {
-        // Try to load from server first
         const serverData = await loadFromServer()
         if (serverData) {
-          state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult }
+          state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId }
           return
         }
-        // Fallback to local IndexedDB
+      } catch (error) {
+        console.error('Failed to load from server:', error)
+      }
+      
+      // Fallback to local IndexedDB if server has no data
+      try {
         const content = await loadContent()
         if (!content) return
         const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
         state.value = { ...createEmptyState(), file: result.file, parseResult: result }
-      } catch (error) {
-        console.error('Failed to restore GEDCOM data:', error)
-        // Fallback to local IndexedDB
-        try {
-          const content = await loadContent()
-          if (!content) return
-          const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
-          state.value = { ...createEmptyState(), file: result.file, parseResult: result }
-        } catch (fallbackError) {
-          console.error('Failed to restore from both server and local storage:', fallbackError)
-        }
+      } catch (fallbackError) {
+        console.error('Failed to restore from local storage:', fallbackError)
       }
     })
   }

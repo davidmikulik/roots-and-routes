@@ -10,14 +10,14 @@ const requireBlobToken = (): string => {
   return token
 }
 
-export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {
-  const { userId, overwrite, metadata } = options
+export async function uploadGedcomFile(file: Buffer | string, filename: string, options: { userId?: string; overwrite?: boolean; fileId?: string; metadata?: Record<string, string> } = {}): Promise<UploadedFile> {
+  const { userId, overwrite, fileId, metadata } = options
   const extension = filename.split('.').pop() || 'ged'
-  const uniqueId = crypto.randomUUID()
+  const uniqueId = fileId || crypto.randomUUID()
   const storageFilename = userId ? `${getUploadDir()}/${userId}/${uniqueId}.${extension}` : `${getUploadDir()}/${uniqueId}.${extension}`
   const token = requireBlobToken()
   let content: Buffer | string = typeof file === 'string' ? file : file
-  const blob = await put(storageFilename, content, { access: 'private', token, addRandomSuffix: !overwrite, ...metadata })
+  const blob = await put(storageFilename, content, { access: 'private', token, addRandomSuffix: false, allowOverwrite: overwrite, ...metadata })
   const size = typeof file === 'string' ? Buffer.byteLength(content as string) : (content as Buffer).byteLength
   return {
     id: uniqueId, name: filename, originalName: filename, size,
@@ -76,7 +76,7 @@ export async function saveParsedGedcom(data: GedcomFile, fileId: string, userId?
   const token = requireBlobToken()
   const jsonString = JSON.stringify(data)
   const path = userId ? `${getUploadDir()}/${userId}/parsed/${fileId}.json` : `${getUploadDir()}/parsed/${fileId}.json`
-  await put(path, jsonString, { access: 'private', token, contentType: 'application/json' })
+  await put(path, jsonString, { access: 'private', token, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true })
   return path
 }
 

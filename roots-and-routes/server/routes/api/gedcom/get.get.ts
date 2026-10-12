@@ -4,32 +4,58 @@ import type { GedcomFile } from '~~/types'
 
 export default defineEventHandler(async (event) => {
   try {
-    // For now, get the first available file (single-user mode)
-    // In future, this should be user-specific
-    const files = await listUserFiles()
+    const query = getQuery(event)
+    const fileId = query.fileId as string | undefined
     
-    if (files.length === 0) {
-      return {
-        success: false,
-        message: 'No GEDCOM file found',
-        data: null
+    let gedcomData: GedcomFile | null = null
+    let fileInfo: { id: string; name: string; createdAt?: Date } | null = null
+    
+    // Try to load the fixed 'current' file first (single-user mode)
+    if (!fileId) {
+      gedcomData = await loadParsedGedcom('current')
+      if (gedcomData) {
+        fileInfo = { id: 'current', name: 'current' }
+      }
+    } else if (fileId) {
+      // If fileId is provided, try to load that specific file
+      gedcomData = await loadParsedGedcom(fileId)
+      if (gedcomData) {
+        fileInfo = { id: fileId, name: fileId }
       }
     }
     
-    // Get the most recently uploaded file
-    const latestFile = files.sort((a, b) => 
-      (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
-    )[0]
-    
-    if (!latestFile?.id) {
-      return {
-        success: false,
-        message: 'No valid GEDCOM file found',
-        data: null
+    // If no file found with the above methods, try to find any file
+    if (!gedcomData || !fileInfo) {
+      const files = await listUserFiles()
+      
+      if (files.length === 0) {
+        return {
+          success: false,
+          message: 'No GEDCOM file found',
+          data: null
+        }
+      }
+      
+      // Get the most recently uploaded file
+      const latestFile = files.sort((a, b) => 
+        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+      )[0]
+      
+      if (!latestFile?.id) {
+        return {
+          success: false,
+          message: 'No valid GEDCOM file found',
+          data: null
+        }
+      }
+      
+      gedcomData = await loadParsedGedcom(latestFile.id)
+      fileInfo = {
+        id: latestFile.id,
+        name: latestFile.name,
+        createdAt: latestFile.createdAt
       }
     }
-    
-    const gedcomData = await loadParsedGedcom(latestFile.id)
     
     if (!gedcomData) {
       return {
@@ -44,11 +70,7 @@ export default defineEventHandler(async (event) => {
       message: 'GEDCOM data loaded successfully',
       data: {
         file: gedcomData,
-        fileInfo: {
-          id: latestFile.id,
-          name: latestFile.name,
-          createdAt: latestFile.createdAt
-        }
+        fileInfo
       },
       timestamp: new Date().toISOString(),
     }

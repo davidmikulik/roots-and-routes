@@ -46,10 +46,12 @@ export default defineEventHandler(async (event) => {
     }
     
     importStage = 'saving GEDCOM file to server'
-    const uploadedFile: UploadedFile = await uploadGedcomFile(file, filename)
+    // Use a fixed file ID for single-user mode
+    const fixedFileId = 'current'
+    const uploadedFile: UploadedFile = await uploadGedcomFile(file, filename, { overwrite: true, fileId: fixedFileId })
     
     importStage = 'saving parsed GEDCOM data to server'
-    await saveParsedGedcom(parseResult.file, uploadedFile.id)
+    await saveParsedGedcom(parseResult.file, fixedFileId)
     
     return {
       success: true,

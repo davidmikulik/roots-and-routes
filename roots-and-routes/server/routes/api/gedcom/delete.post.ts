@@ -14,8 +14,17 @@ export default defineEventHandler(async (event) => {
     const parsedPath = `${getUploadDir()}/parsed/${body.fileId}.json`
     const originalPath = `${getUploadDir()}/${body.fileId}.ged`
     
-    await deleteFile(parsedPath)
-    await deleteFile(originalPath)
+    // Try to delete both paths, but don't fail if one doesn't exist
+    try {
+      await deleteFile(parsedPath)
+    } catch (e) {
+      console.warn(`Failed to delete parsed file: ${parsedPath}`, e)
+    }
+    try {
+      await deleteFile(originalPath)
+    } catch (e) {
+      console.warn(`Failed to delete original file: ${originalPath}`, e)
+    }
     
     return {
       success: true,

@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     console.error('Failed to delete GEDCOM data:', error)
     throw createError({
       statusCode: error.statusCode || 500,
-      statusStatus: error.statusStatus || 'Failed to delete GEDCOM data',
+      statusMessage: error.statusMessage || 'Failed to delete GEDCOM data',
       message: error.message || 'Failed to delete GEDCOM data',
     })
   }

@@ -2,6 +2,7 @@
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import type { KnownLocation } from '~~/types/locations'
 
 const colorMode = useColorMode()
@@ -46,6 +47,15 @@ const loadLocations = async () => {
 
 // Load as soon as the admin token is known (restored after mount or entered above)
 watch(() => adminAuth.isAdmin.value, isAdmin => { if (isAdmin) loadLocations() }, { immediate: true })
+
+// Pasting "lat, lng" into either coordinate field fills both fields
+const pasteCoordinates = (event: ClipboardEvent, target: { latitude: number | null; longitude: number | null }) => {
+  const pair = parseCoordinatePair(event.clipboardData?.getData('text') || '')
+  if (!pair) return
+  event.preventDefault()
+  target.latitude = pair[0]
+  target.longitude = pair[1]
+}
 
 const addLocation = () => {
   const name = draft.name.trim().replace(/\s+/g, ' ')
@@ -259,10 +269,10 @@ const handleImport = async (event: Event) => {
             <input v-model="draft.name" required maxlength="300" class="mt-1 w-full rounded border px-3 py-2" placeholder="Prague, Czech Republic">
           </label>
           <label class="text-sm">Latitude
-            <input v-model.number="draft.latitude" required type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2" placeholder="50.0755">
+            <input v-model.number="draft.latitude" @paste="pasteCoordinates($event, draft)" required type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2" placeholder="50.0755">
           </label>
           <label class="text-sm">Longitude
-            <input v-model.number="draft.longitude" required type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2" placeholder="14.4378">
+            <input v-model.number="draft.longitude" @paste="pasteCoordinates($event, draft)" required type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2" placeholder="14.4378">
           </label>
           <button type="submit" class="self-end rounded border px-4 py-2 font-medium">Add</button>
         </form>
@@ -304,10 +314,10 @@ const handleImport = async (event: Event) => {
                   <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">Coordinates needed</span>
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.latitude" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="`Latitude for ${location.name}`" placeholder="Pending">
+                  <input v-model.number="location.latitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="`Latitude for ${location.name}`" placeholder="Pending">
                 </td>
                 <td class="px-4 py-2">
-                  <input v-model.number="location.longitude" type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="`Longitude for ${location.name}`" placeholder="Pending">
+                  <input v-model.number="location.longitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-180" max="180" class="w-full rounded border px-3 py-2" :aria-label="`Longitude for ${location.name}`" placeholder="Pending">
                 </td>
                 <td class="px-4 py-2 text-right">
                   <button @click="locations.splice(index, 1)" class="text-red-700 underline dark:text-red-300" :aria-label="`Remove ${location.name}`">Remove</button>

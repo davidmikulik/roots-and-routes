@@ -188,12 +188,10 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
 
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
-  const restored = useState<boolean>('gedcom-store-restored', () => false)
 
-  if (import.meta.client && !restored.value) {
-    restored.value = true
+  if (import.meta.client) {
     onMounted(async () => {
-      // Always try to load from server first, ignoring any local fileId
+      // Always try to load from server first on each page load
       // This ensures all devices see the same (latest) data
       try {
         const serverData = await loadFromServer()

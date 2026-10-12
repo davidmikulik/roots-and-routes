@@ -8,24 +8,31 @@ async function tryReparseFromOriginal(fileId: string, uploadDir: string): Promis
   try {
     // Try to find the original .ged or .gedcom file
     const extensions = ['.ged', '.gedcom']
-    for (const ext of extensions) {
-      const originalPath = `${uploadDir}/${fileId}${ext}`
-      try {
-        const content = await getFileText(originalPath)
-        console.log(`[GEDCOM GET] Re-parsing original file ${originalPath}`)
-        const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
-        return result.file
-      } catch (error) {
-        // Try with 'current' as filename
-        if (fileId === 'current') {
-          const currentPath = `${uploadDir}/current${ext}`
-          try {
-            const content = await getFileText(currentPath)
-            console.log(`[GEDCOM GET] Re-parsing original file ${currentPath}`)
-            const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
-            return result.file
-          } catch (e) {
-            // continue
+    
+    // For 'current', also try without prefix
+    const fileIdsToTry = fileId === 'current' ? ['current', ''] : [fileId]
+    
+    for (const tryFileId of fileIdsToTry) {
+      for (const ext of extensions) {
+        const path = tryFileId ? `${uploadDir}/${tryFileId}${ext}` : `${uploadDir}/current${ext}`
+        try {
+          const content = await getFileText(path)
+          console.log(`[GEDCOM GET] Re-parsing original file ${path}`)
+          const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+          return result.file
+        } catch (error) {
+          // Try alternative path patterns
+          // Some files might be stored as uploads/gedcom/FILENAME (without extension in the ID)
+          if (fileId && fileId !== 'current') {
+            try {
+              const path2 = `${uploadDir}/${fileId}`
+              const content = await getFileText(path2)
+              console.log(`[GEDCOM GET] Re-parsing original file ${path2}`)
+              const result: GedcomParseResult = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+              return result.file
+            } catch (e2) {
+              // continue
+            }
           }
         }
       }
@@ -68,13 +75,15 @@ export default defineEventHandler(async (event) => {
         console.log(`[GEDCOM GET] Loaded current with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
         // Check if data is corrupted (empty maps but metadata shows counts)
         if (isParsedDataCorrupted(gedcomData)) {
-          console.log('[GEDCOM GET] Detected corrupted parsed data for current, attempting to re-parse...')
+          console.log(`[GEDCOM GET] WARNING: Corrupted parsed data detected for current! Metadata: ${gedcomData.metadata.totalIndividuals} individuals, but map has ${gedcomData.individuals.size} entries`)
+          console.log('[GEDCOM GET] Attempting to re-parse from original GEDCOM file...')
           const reparsed = await tryReparseFromOriginal('current', uploadDir)
           if (reparsed) {
             gedcomData = reparsed
-            console.log(`[GEDCOM GET] Successfully re-parsed, got ${gedcomData.individuals.size} individuals`)
+            console.log(`[GEDCOM GET] SUCCESS: Re-parsed, got ${gedcomData.individuals.size} individuals and ${gedcomData.families.size} families`)
           } else {
-            console.log('[GEDCOM GET] Failed to re-parse, using corrupted data')
+            console.log('[GEDCOM GET] ERROR: Failed to re-parse from original file - original GEDCOM file may not exist')
+            // Even though data is corrupted, return it so the UI at least shows the metadata
           }
         }
         fileInfo = { id: 'current', name: 'current' }
@@ -88,13 +97,14 @@ export default defineEventHandler(async (event) => {
         console.log(`[GEDCOM GET] Loaded ${fileId} with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
         // Check if data is corrupted
         if (isParsedDataCorrupted(gedcomData)) {
-          console.log(`[GEDCOM GET] Detected corrupted parsed data for ${fileId}, attempting to re-parse...`)
+          console.log(`[GEDCOM GET] WARNING: Corrupted parsed data detected for ${fileId}! Metadata: ${gedcomData.metadata.totalIndividuals} individuals, but map has ${gedcomData.individuals.size} entries`)
+          console.log(`[GEDCOM GET] Attempting to re-parse from original GEDCOM file for ${fileId}...`)
           const reparsed = await tryReparseFromOriginal(fileId, uploadDir)
           if (reparsed) {
             gedcomData = reparsed
-            console.log(`[GEDCOM GET] Successfully re-parsed ${fileId}, got ${gedcomData.individuals.size} individuals`)
+            console.log(`[GEDCOM GET] SUCCESS: Re-parsed ${fileId}, got ${gedcomData.individuals.size} individuals and ${gedcomData.families.size} families`)
           } else {
-            console.log(`[GEDCOM GET] Failed to re-parse ${fileId}, using corrupted data`)
+            console.log(`[GEDCOM GET] ERROR: Failed to re-parse ${fileId} from original file - original GEDCOM file may not exist`)
           }
         }
         fileInfo = { id: fileId, name: fileId }
@@ -138,13 +148,14 @@ export default defineEventHandler(async (event) => {
         console.log(`[GEDCOM GET] Loaded latest file with ${gedcomData.metadata.totalIndividuals} individuals, ${gedcomData.individuals.size} in map`)
         // Check if data is corrupted
         if (isParsedDataCorrupted(gedcomData)) {
-          console.log(`[GEDCOM GET] Detected corrupted parsed data for latest file, attempting to re-parse...`)
+          console.log(`[GEDCOM GET] WARNING: Corrupted parsed data detected for latest file ${latestFile.id}! Metadata: ${gedcomData.metadata.totalIndividuals} individuals, but map has ${gedcomData.individuals.size} entries`)
+          console.log(`[GEDCOM GET] Attempting to re-parse from original GEDCOM file for ${latestFile.id}...`)
           const reparsed = await tryReparseFromOriginal(latestFile.id, uploadDir)
           if (reparsed) {
             gedcomData = reparsed
-            console.log(`[GEDCOM GET] Successfully re-parsed latest file, got ${gedcomData.individuals.size} individuals`)
+            console.log(`[GEDCOM GET] SUCCESS: Re-parsed latest file, got ${gedcomData.individuals.size} individuals and ${gedcomData.families.size} families`)
           } else {
-            console.log('[GEDCOM GET] Failed to re-parse latest file, using corrupted data')
+            console.log(`[GEDCOM GET] ERROR: Failed to re-parse latest file ${latestFile.id} from original file - original GEDCOM file may not exist`)
           }
         }
       } else {

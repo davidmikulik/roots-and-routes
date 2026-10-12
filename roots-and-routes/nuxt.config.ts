@@ -78,6 +78,8 @@ export default defineNuxtConfig({
     },
     routeRules: {
       '/api/**': { headers: { 'cache-control': 'no-cache' } },
+      '/gedcom': { headers: { 'cache-control': 'no-cache, no-store, must-revalidate' } },
+      '/admin/**': { headers: { 'cache-control': 'no-cache, no-store, must-revalidate' } },
       '/**': { headers: { 'cache-control': 'public, max-age=3600' } },
     },
     serverAssets: [

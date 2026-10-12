@@ -10,6 +10,19 @@ const isDark = computed(() => colorMode.value === 'dark')
 const gedcomStore = useGedcomStore()
 const router = useRouter()
 
+// Ensure data is loaded when visiting /tree directly
+onMounted(async () => {
+  console.log('[TREE] onMounted triggered, hasData:', gedcomStore.hasData)
+  if (!gedcomStore.hasData) {
+    console.log('[TREE] No data, refreshing from server...')
+    await gedcomStore.refreshFromServer()
+    console.log('[TREE] After refresh, hasData:', gedcomStore.hasData)
+    console.log('[TREE] Individuals count:', gedcomStore.totalIndividuals)
+  } else {
+    console.log('[TREE] Already has data, individuals:', gedcomStore.totalIndividuals)
+  }
+})
+
 const viewMode = ref<'tree' | 'chart' | 'list'>('list')
 const selectedPerson = ref<AppPerson | null>(null)
 const searchQuery = ref('')
@@ -287,6 +300,7 @@ const deletePerson = async (person: AppPerson) => {
       <div class="mb-6 p-6 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
         <h3 class="font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
           Tree Statistics
+          <span v-if="!gedcomStore.hasData" class="text-xs text-red-500 ml-2">[DEBUG: No data - check console]</span>
         </h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div class="p-4 rounded-lg" :class="{ 'bg-gray-700': isDark, 'bg-gray-100': !isDark }">

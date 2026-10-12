@@ -103,6 +103,7 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
   if (!import.meta.client) return null
   try {
     const url = fileId ? `/api/gedcom/get?fileId=${fileId}` : '/api/gedcom/get'
+    console.log(`[GEDCOM] Fetching from server: ${url}`)
     const response = await $fetch<{
       success: boolean
       data: {
@@ -110,6 +111,8 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
         fileInfo: { id: string; name: string; createdAt?: Date }
       }
     }>(url)
+    
+    console.log('[GEDCOM] Server response:', { success: response.success, hasFile: !!response.data?.file })
     
     if (!response.success || !response.data?.file) {
       return null
@@ -129,7 +132,7 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
     
     return { file: response.data.file, parseResult, fileId: response.data.fileInfo.id }
   } catch (error) {
-    console.error('Failed to load GEDCOM from server:', error)
+    console.error('[GEDCOM] Failed to load GEDCOM from server:', error)
     return null
   }
 }
@@ -189,28 +192,48 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
 
+  // Method to explicitly load data from server
+  const refreshFromServer = async (): Promise<boolean> => {
+    try {
+      console.log('[GEDCOM] Loading from server...')
+      const serverData = await loadFromServer()
+      if (serverData) {
+        console.log(`[GEDCOM] Loaded ${serverData.file.metadata.totalIndividuals} individuals from server`)
+        state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId }
+        return true
+      } else {
+        console.log('[GEDCOM] No data found on server')
+      }
+    } catch (error) {
+      console.error('[GEDCOM] Failed to load from server:', error)
+    }
+    return false
+  }
+
   if (import.meta.client) {
+    console.log('[GEDCOM] Initializing store...')
     onMounted(async () => {
+      console.log('[GEDCOM] onMounted triggered, current hasData:', state.value.file !== null)
       // Always try to load from server first on each page load
       // This ensures all devices see the same (latest) data
-      try {
-        const serverData = await loadFromServer()
-        if (serverData) {
-          state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId }
-          return
-        }
-      } catch (error) {
-        console.error('Failed to load from server:', error)
-      }
+      const loadedFromServer = await refreshFromServer()
+      console.log('[GEDCOM] Loaded from server:', loadedFromServer)
       
       // Fallback to local IndexedDB if server has no data
-      try {
-        const content = await loadContent()
-        if (!content) return
-        const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
-        state.value = { ...createEmptyState(), file: result.file, parseResult: result }
-      } catch (fallbackError) {
-        console.error('Failed to restore from local storage:', fallbackError)
+      if (!loadedFromServer) {
+        console.log('[GEDCOM] Trying local IndexedDB...')
+        try {
+          const content = await loadContent()
+          if (!content) {
+            console.log('[GEDCOM] No local data found')
+            return
+          }
+          const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+          state.value = { ...createEmptyState(), file: result.file, parseResult: result }
+          console.log(`[GEDCOM] Loaded ${result.file.metadata.totalIndividuals} individuals from IndexedDB`)
+        } catch (fallbackError) {
+          console.error('[GEDCOM] Failed to restore from local storage:', fallbackError)
+        }
       }
     })
   }
@@ -682,6 +705,7 @@ export const useGedcomStore = () => {
     clear,
     setError,
     setLoading,
+    refreshFromServer,
     
     // Helpers
     getAllAppPersons,

@@ -9,6 +9,13 @@ const isDark = computed(() => colorMode.value === 'dark')
 const gedcomStore = useGedcomStore()
 const router = useRouter()
 
+// Ensure data is loaded when visiting /map directly
+onMounted(async () => {
+  if (!gedcomStore.hasData) {
+    await gedcomStore.refreshFromServer()
+  }
+})
+
 const mapReady = ref(false)
 const mapInstance = ref<any>(null)
 const center = ref<[number, number]>([50.0755, 14.4378])

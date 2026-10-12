@@ -79,6 +79,44 @@ const saveLocations = async () => {
     isSaving.value = false
   }
 }
+
+const exportLocations = (format: 'csv' | 'json') => {
+  if (locations.value.length === 0) {
+    errorMessage.value = 'No locations to export.'
+    return
+  }
+
+  if (format === 'csv') {
+    const headers = ['Name', 'Latitude', 'Longitude']
+    const csvRows = locations.value.map(location => [
+      `"${location.name.replace(/"/g, '""')}"`,
+      location.latitude !== null ? location.latitude : '',
+      location.longitude !== null ? location.longitude : ''
+    ])
+    const csvContent = [headers, ...csvRows].map(row => row.join(',')).join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `locations-${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } else {
+    const jsonContent = JSON.stringify(locations.value, null, 2)
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `locations-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+  successMessage.value = `Exported ${locations.value.length} locations as ${format.toUpperCase()}.`
+}
 </script>
 
 <template>
@@ -126,9 +164,17 @@ const saveLocations = async () => {
       <section class="overflow-hidden rounded-lg border" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
         <div class="flex items-center justify-between gap-3 border-b p-4" :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }">
           <h2 class="font-semibold">{{ locations.length }} locations</h2>
-          <button @click="saveLocations" :disabled="isSaving" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
-            {{ isSaving ? 'Saving?' : 'Save changes' }}
-          </button>
+          <div class="flex items-center gap-2">
+            <button @click="saveLocations" :disabled="isSaving" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
+              {{ isSaving ? 'Saving?' : 'Save changes' }}
+            </button>
+            <button @click="exportLocations('csv')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Export as CSV">
+              Export CSV
+            </button>
+            <button @click="exportLocations('json')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Export as JSON">
+              Export JSON
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full min-w-[680px] text-left text-sm">

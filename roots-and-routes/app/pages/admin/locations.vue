@@ -18,6 +18,8 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+const isImporting = ref(false)
 
 const getHeaders = () => ({ Authorization: `Bearer ${adminToken.value.trim()}` })
 
@@ -117,6 +119,111 @@ const exportLocations = (format: 'csv' | 'json') => {
   }
   successMessage.value = `Exported ${locations.value.length} locations as ${format.toUpperCase()}.`
 }
+
+const parseCSV = (content: string): KnownLocation[] => {
+  const lines = content.split('\n').filter(line => line.trim() !== '')
+  if (lines.length < 2) return []
+  
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+  const nameIndex = headers.findIndex(h => h.toLowerCase().includes('name'))
+  const latIndex = headers.findIndex(h => h.toLowerCase().includes('latitude'))
+  const lonIndex = headers.findIndex(h => h.toLowerCase().includes('longitude'))
+  
+  if (nameIndex === -1 || latIndex === -1 || lonIndex === -1) {
+    throw new Error('CSV must contain Name, Latitude, and Longitude columns')
+  }
+  
+  const result: KnownLocation[] = []
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',')
+    const name = values[nameIndex]?.trim().replace(/^"|"$/g, '').replace(/""/g, '"') || ''
+    const latitude = parseFloat(values[latIndex]?.trim() || '')
+    const longitude = parseFloat(values[lonIndex]?.trim() || '')
+    
+    if (!name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) continue
+    
+    result.push({ name, latitude, longitude })
+  }
+  return result
+}
+
+const parseJSON = (content: string): KnownLocation[] => {
+  try {
+    const data = JSON.parse(content)
+    if (!Array.isArray(data)) return []
+    
+    return data.filter(item => {
+      return item.name && 
+             Number.isFinite(item.latitude) && 
+             Number.isFinite(item.longitude) &&
+             Math.abs(item.latitude) <= 90 && 
+             Math.abs(item.longitude) <= 180
+    }).map(item => ({
+      name: String(item.name),
+      latitude: Number(item.latitude),
+      longitude: Number(item.longitude)
+    }))
+  } catch {
+    return []
+  }
+}
+
+const triggerFileImport = () => {
+  fileInput.value?.click()
+}
+
+const handleImport = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  
+  isImporting.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  
+  try {
+    const content = await file.text()
+    let newLocations: KnownLocation[]
+    
+    if (file.name.endsWith('.csv')) {
+      newLocations = parseCSV(content)
+    } else if (file.name.endsWith('.json')) {
+      newLocations = parseJSON(content)
+    } else {
+      errorMessage.value = 'Please upload a CSV or JSON file.'
+      return
+    }
+    
+    if (newLocations.length === 0) {
+      errorMessage.value = 'No valid locations found in the file.'
+      return
+    }
+    
+    let addedCount = 0
+    for (const newLoc of newLocations) {
+      const exists = locations.value.some(loc => 
+        loc.name.localeCompare(newLoc.name, undefined, { sensitivity: 'base' }) === 0
+      )
+      if (!exists) {
+        locations.value.push(newLoc)
+        addedCount++
+      }
+    }
+    
+    if (addedCount > 0) {
+      locations.value.sort((first, second) => first.name.localeCompare(second.name))
+      successMessage.value = `Imported ${addedCount} new locations. ${newLocations.length - addedCount} duplicates skipped.`
+    } else {
+      errorMessage.value = 'All locations in the file already exist.'
+    }
+  } catch (error: any) {
+    errorMessage.value = error.message || 'Failed to import file.'
+  } finally {
+    isImporting.value = false
+    input.value = ''
+  }
+}
 </script>
 
 <template>
@@ -168,6 +275,10 @@ const exportLocations = (format: 'csv' | 'json') => {
             <button @click="saveLocations" :disabled="isSaving" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
               {{ isSaving ? 'Saving?' : 'Save changes' }}
             </button>
+            <button @click="triggerFileImport" :disabled="isImporting" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Import from CSV or JSON">
+              {{ isImporting ? 'Importing...' : 'Import' }}
+            </button>
+            <input ref="fileInput" type="file" accept=".csv,.json" class="hidden" @change="handleImport">
             <button @click="exportLocations('csv')" :disabled="locations.length === 0" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" title="Export as CSV">
               Export CSV
             </button>

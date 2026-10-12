@@ -99,6 +99,40 @@ const deleteContent = async (): Promise<void> => {
   database.close()
 }
 
+const loadFromServer = async (): Promise<{ file: GedcomFile; parseResult: GedcomParseResult } | null> => {
+  if (!import.meta.client) return null
+  try {
+    const response = await $fetch<{
+      success: boolean
+      data: {
+        file: GedcomFile
+        fileInfo: { id: string; name: string; createdAt: Date }
+      }
+    }>('/api/gedcom/get')
+    
+    if (!response.success || !response.data?.file) {
+      return null
+    }
+    
+    // Create a parse result from the loaded file
+    const parseResult: GedcomParseResult = {
+      file: response.data.file,
+      warnings: [],
+      errors: [],
+      stats: {
+        linesProcessed: 0,
+        recordsCreated: response.data.file.metadata.totalIndividuals + response.data.file.metadata.totalFamilies,
+        parsingTime: 0
+      }
+    }
+    
+    return { file: response.data.file, parseResult }
+  } catch (error) {
+    console.error('Failed to load GEDCOM from server:', error)
+    return null
+  }
+}
+
 const createEmptyState = (): GedcomState => ({
   file: null,
   parseResult: null,
@@ -160,12 +194,28 @@ export const useGedcomStore = () => {
     onMounted(async () => {
       if (state.value.file) return
       try {
+        // Try to load from server first
+        const serverData = await loadFromServer()
+        if (serverData) {
+          state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult }
+          return
+        }
+        // Fallback to local IndexedDB
         const content = await loadContent()
         if (!content) return
         const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
         state.value = { ...createEmptyState(), file: result.file, parseResult: result }
       } catch (error) {
         console.error('Failed to restore GEDCOM data:', error)
+        // Fallback to local IndexedDB
+        try {
+          const content = await loadContent()
+          if (!content) return
+          const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
+          state.value = { ...createEmptyState(), file: result.file, parseResult: result }
+        } catch (fallbackError) {
+          console.error('Failed to restore from both server and local storage:', fallbackError)
+        }
       }
     })
   }
@@ -375,7 +425,23 @@ export const useGedcomStore = () => {
       errors: [],
       stats: { ...stats, recordsCreated: merged.individuals.size + merged.families.size },
     })
-    if (import.meta.client) await saveContent(writeGedcom(merged))
+    if (import.meta.client) {
+      await saveContent(writeGedcom(merged))
+      // Also save to server if we have a fileId
+      if (state.value.fileId) {
+        try {
+          await $fetch('/api/gedcom/save', {
+            method: 'POST',
+            body: {
+              fileId: state.value.fileId,
+              fileData: merged
+            }
+          })
+        } catch (error) {
+          console.error('Failed to save merged file to server:', error)
+        }
+      }
+    }
   }
 
   const savePerson = async (draft: IndividualDraft): Promise<string> => {
@@ -477,7 +543,23 @@ export const useGedcomStore = () => {
     file.metadata.totalFamilies = file.families.size
     const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
-    if (import.meta.client) await saveContent(writeGedcom(file))
+    if (import.meta.client) {
+      await saveContent(writeGedcom(file))
+      // Also save to server if we have a fileId
+      if (state.value.fileId) {
+        try {
+          await $fetch('/api/gedcom/save', {
+            method: 'POST',
+            body: {
+              fileId: state.value.fileId,
+              fileData: file
+            }
+          })
+        } catch (error) {
+          console.error('Failed to save to server:', error)
+        }
+      }
+    }
     return xrefId
   }
 
@@ -499,12 +581,42 @@ export const useGedcomStore = () => {
     file.metadata.totalFamilies = file.families.size
     const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
-    if (import.meta.client) await saveContent(writeGedcom(file))
+    if (import.meta.client) {
+      await saveContent(writeGedcom(file))
+      // Also save to server if we have a fileId
+      if (state.value.fileId) {
+        try {
+          await $fetch('/api/gedcom/save', {
+            method: 'POST',
+            body: {
+              fileId: state.value.fileId,
+              fileData: file
+            }
+          })
+        } catch (error) {
+          console.error('Failed to save to server:', error)
+        }
+      }
+    }
   }
 
-  const clear = () => {
+  const clear = async () => {
+    const fileId = state.value.fileId
     state.value = createEmptyState()
-    if (import.meta.client) void deleteContent().catch(error => console.error('Failed to clear saved GEDCOM data:', error))
+    if (import.meta.client) {
+      void deleteContent().catch(error => console.error('Failed to clear saved GEDCOM data:', error))
+      // Also delete from server if we have a fileId
+      if (fileId) {
+        try {
+          await $fetch('/api/gedcom/delete', {
+            method: 'POST',
+            body: { fileId }
+          })
+        } catch (error) {
+          console.error('Failed to delete from server:', error)
+        }
+      }
+    }
   }
 
   const setError = (error: string) => {

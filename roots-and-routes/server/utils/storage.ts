@@ -2,7 +2,12 @@
 import { put, get, del, list, head } from '@vercel/blob'
 import type { GedcomFile, GedcomParseResult, UploadedFile } from '~~/types'
 
-const getBlobToken = (): string => useRuntimeConfig().vercelBlob?.token || process.env.BLOB_READ_WRITE_TOKEN || ''
+const getBlobToken = (): string => 
+  useRuntimeConfig().vercelBlob?.token || 
+  process.env.BLOB_READ_WRITE_TOKEN || 
+  process.env.ADMIN_API_TOKEN || 
+  process.env.API_TOKEN || 
+  ''
 const getUploadDir = (): string => useRuntimeConfig().gedcom?.uploadDir || 'uploads/gedcom'
 const requireBlobToken = (): string => {
   const token = getBlobToken()

@@ -52,6 +52,24 @@ const eventLabel = (code: string): string => {
   return key in messages.en ? t(key as MessageKey) : code
 }
 
+// Detail of the selected person: geographic events with a hover bubble (place); years of life are in LifespanTips.vue
+const selectedGeoEvents = computed(() => {
+  const person = selectedPerson.value
+  const individual = person ? gedcomStore.individuals.value.get(person.id) : undefined
+  if (!individual) return []
+  const withCoordinates = (event?: GedcomEvent): event is GedcomEvent =>
+    !!event?.coordinates && !Number.isNaN(event.coordinates[0]) && !Number.isNaN(event.coordinates[1])
+  // Same events and order as AppPerson.allCoordinates (convertToAppPerson)
+  return [individual.birth, individual.baptism, individual.christening, individual.death, individual.burial, individual.cremation, ...individual.events]
+    .filter(withCoordinates)
+    .map((event, index) => ({ key: `${index}-${event.type}`, type: String(event.type), place: event.place || '' }))
+})
+
+const placeTip = (place: string): string => {
+  if (anon.enabled.value) return t('tree.placeHidden')
+  return place || t('tree.placeUnknown')
+}
+
 const createEmptyEventDraft = () => ({ type: 'EVEN' as const, date: '', place: '', latitude: '', longitude: '', description: '' })
 
 function createEmptyDraft(): IndividualDraft {
@@ -437,7 +455,7 @@ const deletePerson = async (person: AppPerson) => {
                 <div v-if="person.isRoot" class="text-xs opacity-60">{{ t('tree.root') }}</div>
               </td>
               <td class="p-4">
-                {{ person.lifespan || t('tree.na') }}
+                <LifespanTips :person="person" />
               </td>
               <td class="p-4">
                 {{ person.generation }}
@@ -542,7 +560,7 @@ const deletePerson = async (person: AppPerson) => {
                   {{ t('tree.col.lifespan') }}
                 </div>
                 <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  {{ selectedPerson.lifespan || t('tree.na') }}
+                  <LifespanTips :person="selectedPerson" />
                 </div>
               </div>
               <div>
@@ -563,18 +581,16 @@ const deletePerson = async (person: AppPerson) => {
               </div>
             </div>
             
-            <div v-if="treeSettings.showDetails && selectedPerson.allCoordinates" class="mt-4">
+            <div v-if="treeSettings.showDetails && selectedGeoEvents.length" class="mt-4">
               <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
                 {{ t('tree.geoEvents') }}
               </div>
               <div class="flex gap-2 flex-wrap">
-                <span
-                  v-for="[lat, lng, type] in selectedPerson.allCoordinates"
-                  :key="`${lat}-${lng}-${type}`"
-                  class="px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-xs"
-                >
-                  {{ eventLabel(String(type)) }}
-                </span>
+                <HoverTip v-for="event in selectedGeoEvents" :key="event.key" :text="placeTip(event.place)">
+                  <span class="block cursor-help px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-xs">
+                    {{ eventLabel(event.type) }}
+                  </span>
+                </HoverTip>
               </div>
             </div>
           </div>

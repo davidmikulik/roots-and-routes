@@ -29,6 +29,11 @@ export default defineNuxtConfig({
     dirs: ['~~/composables', '~~/utils'],
   },
 
+  // relatives-tree ships ES modules with extensionless imports, which Node cannot load; let the bundler process it
+  build: {
+    transpile: ['relatives-tree'],
+  },
+
   // Modules
   modules: [
     '@nuxt/eslint',
@@ -74,7 +79,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'vercel',
     prerender: {
-      routes: ['/', '/map', '/tree', '/gedcom'],
+      routes: ['/', '/map', '/tree', '/graph', '/gedcom'],
     },
     routeRules: {
       '/api/**': { headers: { 'cache-control': 'no-cache' } },

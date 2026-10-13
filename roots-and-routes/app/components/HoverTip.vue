@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Wraps content and shows a small bubble above it on hover or keyboard/touch focus.
 // Without `text` it renders just the content (no bubble, not focusable).
-defineProps<{ text?: string }>()
+// `focusable` false: inside something that is itself the focus target (a card), the bubble then opens on hover only
+const props = withDefaults(defineProps<{ text?: string; focusable?: boolean }>(), { focusable: true })
 
 const bubble = ref<HTMLElement | null>(null)
 // Horizontal correction so the bubble never leaves the screen (e.g. a chip near the right edge of a phone)
@@ -21,7 +22,7 @@ const reposition = async () => {
 <template>
   <span
     class="group relative inline-block outline-none"
-    :tabindex="text ? 0 : undefined"
+    :tabindex="text && props.focusable ? 0 : undefined"
     @mouseenter="text && reposition()"
     @focus="text && reposition()"
   >

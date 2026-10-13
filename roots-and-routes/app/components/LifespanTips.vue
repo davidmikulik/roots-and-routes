@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Years of life ("1914 - 2010"); hovering a year shows the full birth / death date in a bubble.
-import type { AppPerson, GedcomEvent } from '~~/types/gedcom'
+import type { GedcomEvent } from '~~/types/gedcom'
 import { formatGedcomDate } from '~~/utils/gedcom/dates'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
 
-const props = defineProps<{ person: AppPerson }>()
+// Anything with a birth and a death event: an AppPerson or a GedcomIndividual
+const props = withDefaults(defineProps<{ person: { birth?: GedcomEvent; death?: GedcomEvent }; focusable?: boolean; hideEmpty?: boolean }>(), { focusable: true, hideEmpty: false })
 
 const { t } = useT()
 const anon = useAnonymize()
@@ -33,11 +34,11 @@ const tip = (part: { code: 'BIRT' | 'DEAT'; raw: string }): string => {
     <template v-if="parts.length">
       <template v-for="(part, index) in parts" :key="part.code">
         <span v-if="index > 0"> - </span>
-        <HoverTip :text="tip(part)">
+        <HoverTip :text="tip(part)" :focusable="props.focusable">
           <span :class="tip(part) ? 'cursor-help underline decoration-dotted underline-offset-2' : ''">{{ part.year }}</span>
         </HoverTip>
       </template>
     </template>
-    <template v-else>{{ t('tree.na') }}</template>
+    <template v-else-if="!props.hideEmpty">{{ t('tree.na') }}</template>
   </span>
 </template>

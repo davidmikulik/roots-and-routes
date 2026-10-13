@@ -12,21 +12,27 @@
     "generate": "nuxt generate",
     "postinstall": "nuxt prepare",
     "typecheck": "vue-tsc --noEmit",
+    "check:graph": "jiti scripts/check-graph.mts",
     "lint": "eslint . --ext .vue,.ts,.js,.tsx,.jsx",
     "vercel-build": "nuxt build",
     "deploy": "vercel --prod"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.1",
+    "d3-selection": "3.0.0",
+    "d3-zoom": "3.0.0",
     "leaflet": "^1.9.4",
     "nuxt": "^3.12.0",
+    "relatives-tree": "3.2.2",
     "uuid": "^9.0.1",
     "vue": "^3.4.0"
   },
   "devDependencies": {
     "@nuxt/eslint": "^0.3.0",
-    "@nuxtjs/tailwindcss": "^6.14.0",
     "@nuxtjs/color-mode": "^3.4.0",
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@types/d3-selection": "^3.0.12",
+    "@types/d3-zoom": "^3.0.9",
     "@types/leaflet": "^1.9.12",
     "@types/uuid": "^9.0.8",
     "@vueuse/core": "^10.11.0",

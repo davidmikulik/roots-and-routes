@@ -19,6 +19,7 @@ const navLinks: { to: string; key: MessageKey }[] = [
   { to: '/', key: 'nav.home' },
   { to: '/map', key: 'nav.map' },
   { to: '/tree', key: 'nav.tree' },
+  { to: '/graph', key: 'nav.graph' },
   { to: '/gedcom', key: 'nav.gedcom' },
 ]
 
@@ -52,6 +53,7 @@ const pageTitle = computed(() => {
     case '/': return t('title.home')
     case '/map': return t('title.map')
     case '/tree': return t('title.tree')
+    case '/graph': return t('title.graph')
     case '/gedcom': return t('title.gedcom')
     case '/settings': return t('title.settings')
     case '/admin/locations': return t('title.locations')

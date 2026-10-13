@@ -7,7 +7,7 @@ import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
 
 // Anything with a birth and a death event: an AppPerson or a GedcomIndividual
-const props = withDefaults(defineProps<{ person: { birth?: GedcomEvent; death?: GedcomEvent }; focusable?: boolean; hideEmpty?: boolean }>(), { focusable: true, hideEmpty: false })
+const props = withDefaults(defineProps<{ person: { birth?: GedcomEvent; death?: GedcomEvent }; focusable?: boolean; hideEmpty?: boolean; plain?: boolean }>(), { focusable: true, hideEmpty: false, plain: false })
 
 const { t } = useT()
 const anon = useAnonymize()
@@ -24,7 +24,8 @@ const parts = computed(() => {
 
 const tip = (part: { code: 'BIRT' | 'DEAT'; raw: string }): string => {
   // Anonymous mode shows the year only, so the full date must not be revealed
-  if (anon.enabled.value || !part.raw) return ''
+  // `plain`: only the years, no bubble (for places where the bubble would be clipped, e.g. a scrolling panel)
+  if (props.plain || anon.enabled.value || !part.raw) return ''
   return `${part.code === 'BIRT' ? t('tree.event.BIRT') : t('tree.event.DEAT')}: ${formatGedcomDate(part.raw, locale.value)}`
 }
 </script>

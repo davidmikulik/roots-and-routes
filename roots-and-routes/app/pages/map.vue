@@ -56,7 +56,8 @@ const startYear = ref('')
 const endYear = ref('')
 
 const selectedEvent = ref<MapEvent | null>(null)
-const infoWindowPosition = ref<[number, number] | null>(null)
+// Leaflet markers by event id (not reactive: Leaflet objects must not be wrapped in proxies)
+const markers = new Map<string, any>()
 
 // Get map events from store
 const mapEvents = computed<MapEvent[]>(() => {
@@ -132,6 +133,13 @@ const filteredEvents = computed(() => {
   })
 })
 
+// The events on the map, grouped by person: the detail panel lists a person's events and tells which relatives are on the map
+const eventsByPerson = computed(() => {
+  const groups = new Map<string, MapEvent[]>()
+  for (const event of filteredEvents.value) groups.set(event.personId, [...(groups.get(event.personId) ?? []), event])
+  return groups
+})
+
 // Moves the map to the events once; returns false while there are none yet (the data may load after the map)
 let fitted = false
 const fitToEvents = (): boolean => {
@@ -154,6 +162,9 @@ const initMap = () => {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(mapInstance.value)
     
+    // A click on the empty map closes the detail (marker clicks do not bubble up to the map)
+    mapInstance.value.on('click', closeDetail)
+
     fitted = fitToEvents()
 
     // Markers go in after the final view is set: leaflet.markercluster loses its markers when the view
@@ -162,6 +173,20 @@ const initMap = () => {
     
     mapReady.value = true
   }
+}
+
+const makeIcon = (event: MapEvent, selected: boolean) => {
+  const L = (window as any).L
+  const config = eventTypeConfig[event.type as keyof typeof eventTypeConfig] || { color: '#9ca3af', icon: '⚪' }
+  const ring = selected
+    ? 'border: 3px solid #1d4ed8; box-shadow: 0 0 0 4px rgba(37,99,235,0.35), 0 3px 8px rgba(0,0,0,0.35); transform: scale(1.2);'
+    : 'border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'
+  return L.divIcon({
+    html: `<div style="background-color: ${config.color}; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: white; box-sizing: border-box; ${ring}">${config.icon}</div>`,
+    className: 'custom-marker-icon',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  })
 }
 
 const updateMapMarkers = () => {
@@ -177,35 +202,19 @@ const updateMapMarkers = () => {
   // Clusters need the leaflet.markercluster script (loaded in nuxt.config); without it plain markers are shown
   markerLayer = showClusters.value && L.markerClusterGroup ? L.markerClusterGroup() : L.layerGroup()
   
+  markers.clear()
   filteredEvents.value.forEach(event => {
-    const config = eventTypeConfig[event.type as keyof typeof eventTypeConfig] || { color: '#9ca3af', icon: '⚪' }
-    
     const marker = L.marker([event.coordinates[0], event.coordinates[1]], {
-      icon: L.divIcon({
-        html: `<div style="background-color: ${config.color}; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: white; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">${config.icon}</div>`,
-        className: 'custom-marker-icon',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      }),
+      icon: makeIcon(event, event.id === selectedEvent.value?.id),
     }).addTo(markerLayer)
-    
-    const popupContent = `
-      <div style="min-width: 200px; padding: 8px;">
-        <div style="font-weight: bold; margin-bottom: 4px;">${config.icon} ${eventLabel(event.type)}</div>
-        <div style="margin-bottom: 4px;">${anon.name(event.personName)}</div>
-        <div style="color: #666; font-size: 12px; margin-bottom: 4px;">${anon.date(event.date) || t('map.na')}</div>
-        <div style="color: #666; font-size: 12px;">${anon.place(event.place) || t('map.na')}</div>
-      </div>
-    `
-    marker.bindPopup(popupContent)
-    
-    marker.on('click', () => {
-      selectedEvent.value = event
-      infoWindowPosition.value = [event.coordinates[0], event.coordinates[1]]
-    })
+    markers.set(event.id, marker)
+    marker.on('click', () => selectEvent(event))
   })
-  
+
   markerLayer.addTo(mapInstance.value)
+
+  // The selected person's event may have been filtered out
+  if (selectedEvent.value && !markers.has(selectedEvent.value.id)) closeDetail()
 
   if (showMigration.value) {
     addMigrationLines()
@@ -255,9 +264,69 @@ const addMigrationLines = () => {
   })
 }
 
-const closeInfoWindow = () => {
+// Moves the map just enough so the selected marker is clear of the detail panel and not too close to the map edge
+const revealMarker = async (event: MapEvent) => {
+  await nextTick()
+  const map = mapInstance.value
+  const panel = document.querySelector('[data-map-panel]')
+  if (!map || !panel) return
+  const container = map.getContainer().getBoundingClientRect()
+  const box = panel.getBoundingClientRect()
+  const point = map.latLngToContainerPoint(event.coordinates)
+  const edge = 40
+  const left = box.left - container.left - edge
+  const right = box.right - container.left + edge
+  const top = box.top - container.top - edge
+  const bottom = box.bottom - container.top + edge
+  // Candidate shifts ([dx, dy] moves the marker to [x - dx, y - dy]); only those that stay inside the map are allowed
+  const fits = (dx: number, dy: number) => point.x - dx >= edge && point.x - dx <= container.width - edge && point.y - dy >= edge && point.y - dy <= container.height - edge
+  const covered = point.x > left && point.x < right && point.y > top && point.y < bottom
+  const options = covered
+    ? [[0, point.y - top], [point.x - left, 0], [point.x - right, 0], [0, point.y - bottom]]
+    : [[0, 0]]
+  const clampX = Math.min(0, point.x - edge) + Math.max(0, point.x - (container.width - edge))
+  const clampY = Math.min(0, point.y - edge) + Math.max(0, point.y - (container.height - edge))
+  const [dx, dy] = options.filter(([x, y]) => fits(x, y)).sort((a, c) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(c[0]) - Math.abs(c[1]))[0]
+    ?? [clampX, clampY]
+  if (covered || clampX || clampY) map.panBy([covered ? dx : clampX, covered ? dy : clampY])
+}
+
+const selectEvent = (event: MapEvent, options: { reveal?: boolean } = {}) => {
+  const previous = selectedEvent.value
+  if (previous && previous.id !== event.id) markers.get(previous.id)?.setIcon(makeIcon(previous, false))
+  selectedEvent.value = event
+  markers.get(event.id)?.setIcon(makeIcon(event, true))
+  if (options.reveal !== false) revealMarker(event)
+}
+
+const closeDetail = () => {
+  const previous = selectedEvent.value
   selectedEvent.value = null
-  infoWindowPosition.value = null
+  if (previous) markers.get(previous.id)?.setIcon(makeIcon(previous, false))
+}
+
+// Selecting an event in the panel: show its marker (opening a cluster if needed), then keep it clear of the panel
+const goToEvent = (event: MapEvent) => {
+  selectEvent(event, { reveal: false })
+  const map = mapInstance.value
+  const marker = markers.get(event.id)
+  if (!map || !marker) return
+  const move = () => {
+    map.once('moveend', () => revealMarker(event))
+    map.panTo(marker.getLatLng())
+    revealMarker(event)
+  }
+  if (markerLayer?.zoomToShowLayer) markerLayer.zoomToShowLayer(marker, move)
+  else move()
+}
+
+const focusPerson = (personId: string) => {
+  const event = eventsByPerson.value.get(personId)?.[0]
+  if (event) goToEvent(event)
+}
+
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && selectedEvent.value) closeDetail()
 }
 
 const handleResize = () => {
@@ -294,10 +363,12 @@ onMounted(() => {
     initMap()
   })
   window.addEventListener('resize', handleResize)
+  window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', onKeydown)
   if (mapInstance.value) {
     mapInstance.value.remove()
     mapInstance.value = null
@@ -427,35 +498,16 @@ onUnmounted(() => {
         
         <div id="map-container" class="h-[70vh] lg:h-[80vh] rounded-lg shadow-lg"></div>
         
-        <div
-          v-if="selectedEvent && infoWindowPosition"
-          class="absolute bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 max-w-sm"
-          :style="{ transform: 'translate(-50%, -100%)', top: '0', left: '50%' }"
-        >
-          <button
-            @click="closeInfoWindow"
-            class="absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300"
-          >
-            ×
-          </button>
-          <div class="pr-6">
-            <div class="flex items-center mb-2">
-              <span class="text-2xl mr-2">{{ selectedEvent.icon }}</span>
-              <h3 class="font-bold text-lg" :class="{ 'text-gray-900': !isDark, 'text-white': isDark }">
-                {{ eventLabel(selectedEvent.type) }}
-              </h3>
-            </div>
-            <div class="mb-1 font-medium" :class="{ 'text-gray-700': !isDark, 'text-gray-200': isDark }">
-              {{ anon.name(selectedEvent.personName) }}
-            </div>
-            <div v-if="anon.date(selectedEvent.date)" class="text-sm opacity-75 mb-1">
-              {{ t('map.date', { value: anon.date(selectedEvent.date) }) }}
-            </div>
-            <div v-if="anon.place(selectedEvent.place)" class="text-sm opacity-75">
-              {{ t('map.location', { value: anon.place(selectedEvent.place) }) }}
-            </div>
-          </div>
-        </div>
+        <MapPersonPanel
+          v-if="selectedEvent"
+          :person-id="selectedEvent.personId"
+          :selected-id="selectedEvent.id"
+          :events-by-person="eventsByPerson"
+          :event-label="eventLabel"
+          @close="closeDetail"
+          @select-event="goToEvent"
+          @select-person="focusPerson"
+        />
       </div>
     </div>
   </div>

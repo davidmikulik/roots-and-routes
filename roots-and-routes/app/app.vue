@@ -3,6 +3,7 @@ import { useColorMode } from '#imports'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
+import type { MessageKey } from '~~/i18n'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -12,6 +13,25 @@ const adminAuth = useAdminAuth()
 const appSettings = useSettings()
 const { t } = useT()
 const adminPanelOpen = ref(false)
+const menuOpen = ref(false)
+
+const navLinks: { to: string; key: MessageKey }[] = [
+  { to: '/', key: 'nav.home' },
+  { to: '/map', key: 'nav.map' },
+  { to: '/tree', key: 'nav.tree' },
+  { to: '/gedcom', key: 'nav.gedcom' },
+]
+
+const toggleMenu = () => {
+  menuOpen.value = !menuOpen.value
+  if (menuOpen.value) adminPanelOpen.value = false
+}
+const toggleAdminPanel = () => {
+  adminPanelOpen.value = !adminPanelOpen.value
+  if (adminPanelOpen.value) menuOpen.value = false
+}
+// Close the menu after choosing a page
+watch(() => route.path, () => { menuOpen.value = false })
 // The store keeps unsaved edits here when auto-save is off (see useGedcomStore)
 const gedcomState = useState<{ dirty?: boolean } | null>('gedcom-store')
 
@@ -50,15 +70,15 @@ useHead({
     <header class="shadow-sm" :class="{ 'bg-gray-800': isDark, 'bg-white': !isDark }">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
-          <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center">
+          <div class="flex items-center space-x-3 min-w-0">
+            <div class="w-10 h-10 shrink-0 rounded-full bg-primary-600 flex items-center justify-center">
               <span class="text-white font-bold text-lg">RR</span>
             </div>
-            <div>
-              <h1 class="text-xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            <div class="min-w-0">
+              <h1 class="text-base sm:text-xl font-bold truncate" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
                 {{ t('app.name') }}
               </h1>
-              <p class="text-sm opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
+              <p class="hidden sm:block text-sm opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
                 {{ t('app.tagline') }}
               </p>
             </div>
@@ -66,46 +86,21 @@ useHead({
 
           <nav class="hidden md:flex items-center space-x-8">
             <NuxtLink
-              to="/"
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
               class="transition-colors duration-200 font-medium"
               :class="{
-                'text-primary-500': route.path === '/',
-                'text-white hover:text-primary-400': isDark && route.path !== '/',
-                'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/',
+                'text-primary-500': route.path === link.to,
+                'text-white hover:text-primary-400': isDark && route.path !== link.to,
+                'text-gray-700 hover:text-primary-600': !isDark && route.path !== link.to,
               }"
-            >{{ t('nav.home') }}</NuxtLink>
-            <NuxtLink
-              to="/map"
-              class="transition-colors duration-200 font-medium"
-              :class="{
-                'text-primary-500': route.path === '/map',
-                'text-white hover:text-primary-400': isDark && route.path !== '/map',
-                'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/map',
-              }"
-            >{{ t('nav.map') }}</NuxtLink>
-            <NuxtLink
-              to="/tree"
-              class="transition-colors duration-200 font-medium"
-              :class="{
-                'text-primary-500': route.path === '/tree',
-                'text-white hover:text-primary-400': isDark && route.path !== '/tree',
-                'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/tree',
-              }"
-            >{{ t('nav.tree') }}</NuxtLink>
-            <NuxtLink
-              to="/gedcom"
-              class="transition-colors duration-200 font-medium"
-              :class="{
-                'text-primary-500': route.path === '/gedcom',
-                'text-white hover:text-primary-400': isDark && route.path !== '/gedcom',
-                'text-gray-700 hover:text-primary-600': !isDark && route.path !== '/gedcom',
-              }"
-            >{{ t('nav.gedcom') }}</NuxtLink>
+            >{{ t(link.key) }}</NuxtLink>
           </nav>
 
-          <div class="relative flex items-center space-x-4">
+          <div class="relative flex items-center space-x-2 sm:space-x-4 shrink-0">
             <button
-              @click="adminPanelOpen = !adminPanelOpen"
+              @click="toggleAdminPanel"
               class="p-2 rounded-full transition-colors duration-200"
               :class="{
                 'bg-gray-700 hover:bg-gray-600': isDark,
@@ -146,8 +141,41 @@ useHead({
             >
               <span class="text-xl">⚙️</span>
             </NuxtLink>
+            <button
+              @click="toggleMenu"
+              class="md:hidden p-2 rounded-full transition-colors duration-200"
+              :class="{
+                'bg-gray-700 hover:bg-gray-600': isDark,
+                'bg-gray-200 hover:bg-gray-300': !isDark,
+              }"
+              aria-controls="mobile-menu"
+              :aria-expanded="menuOpen"
+              :aria-label="menuOpen ? t('nav.menuClose') : t('nav.menuOpen')"
+            >
+              <span class="block w-6 text-center text-xl leading-7">{{ menuOpen ? '✕' : '☰' }}</span>
+            </button>
           </div>
         </div>
+
+        <nav
+          v-if="menuOpen"
+          id="mobile-menu"
+          class="md:hidden border-t py-2"
+          :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }"
+          :aria-label="t('nav.menu')"
+        >
+          <NuxtLink
+            v-for="link in navLinks"
+            :key="link.to"
+            :to="link.to"
+            class="block px-3 py-3 rounded-lg font-medium transition-colors duration-200"
+            :class="{
+              'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': route.path === link.to,
+              'text-white hover:bg-gray-700': isDark && route.path !== link.to,
+              'text-gray-700 hover:bg-gray-100': !isDark && route.path !== link.to,
+            }"
+          >{{ t(link.key) }}</NuxtLink>
+        </nav>
       </div>
     </header>
 

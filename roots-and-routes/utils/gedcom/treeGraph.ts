@@ -2,6 +2,7 @@
 // Pure functions, no Vue, so they can be tested on real data with `npx jiti`.
 import calcTree from 'relatives-tree'
 import type { GedcomFile, GedcomIndividual } from '~~/types/gedcom'
+import { stripSurnameSlashes } from './names'
 
 // ---- Geometry. The library places every card in a cell of 2 x 2 "units"; the card sits in the middle of its cell.
 // Connectors run from cell centers and bends lie on cell borders, so the cell padding is the visible length of the stubs.
@@ -35,10 +36,10 @@ export interface BuiltTree {
   warnings: string[]
 }
 
-/** Name for display: GEDCOM writes the surname between slashes ("Jan /Mikulik/"); empty names become "?" */
+/** Name for display; empty names become "?" (the slashes are stripped again for data from before the import fix) */
 export function displayName(person: Pick<GedcomIndividual, 'names'>): string {
   const name = person.names[0]
-  const text = (name?.full || [name?.given, name?.surname].filter(Boolean).join(' ')).replace(/\//g, ' ').replace(/\s+/g, ' ').trim()
+  const text = stripSurnameSlashes(name?.full || [name?.given, name?.surname].filter(Boolean).join(' '))
   return text || '?'
 }
 

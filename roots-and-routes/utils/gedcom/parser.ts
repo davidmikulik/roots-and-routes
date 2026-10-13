@@ -1,5 +1,6 @@
 // Custom GEDCOM Parser - Complete implementation
 import type { LatLngTuple as LngLat } from 'leaflet'
+import { parseGedcomName, nameToGedcom } from './names'
 import type {
   GedcomFile, GedcomLine, GedcomIndividual, GedcomFamily, GedcomName,
   GedcomEvent, GedcomDate, GedcomSource, GedcomSourceCitation, GedcomRepository,
@@ -518,26 +519,9 @@ class GedcomParser {
     }
   }
 
+  // `full` is stored without the surname slashes; see utils/gedcom/names.ts
   private parseName(nameString: string): GedcomName {
-    const name: GedcomName = {
-      full: nameString,
-      given: '',
-      surname: '',
-      prefix: '',
-      suffix: ''
-    }
-    
-    // Simple name parsing: Given /Surname/
-    const match = nameString.match(/^(.+)\s+\/(.+)\/\s*(.*)$/)
-    if (match) {
-      name.given = match[1].trim()
-      name.surname = match[2].trim()
-      name.suffix = match[3].trim()
-    } else {
-      name.full = nameString
-    }
-    
-    return name
+    return parseGedcomName(nameString)
   }
 
   private createEvent(type: GedcomEventType, value: string): GedcomEvent {
@@ -805,11 +789,7 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     
     // Names
     for (const name of individual.names) {
-      let nameStr = name.full
-      if (name.given || name.surname) {
-        nameStr = `${name.given} /${name.surname}/`
-      }
-      lines.push(`1 NAME ${nameStr}`)
+      lines.push(`1 NAME ${nameToGedcom(name)}`)
       if (name.type) lines.push(`2 TYPE ${name.type}`)
     }
     

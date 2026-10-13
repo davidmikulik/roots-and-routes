@@ -3,6 +3,7 @@ import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, Gedc
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
+import { parseGedcomName } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
@@ -507,8 +508,11 @@ export const useGedcomStore = () => {
       return `I${number}`
     })()
     const existing = file.individuals.get(xrefId)
-    const words = draft.fullName.trim().split(/\s+/)
+    // "Jan /Novák/" is read like a GEDCOM name; otherwise the last word is taken as the surname
+    const typedName = draft.fullName.trim()
+    const words = typedName.split(/\s+/)
     const surname = words.length > 1 ? words.pop()! : ''
+    const name = typedName.includes('/') ? parseGedcomName(typedName) : { full: typedName, given: words.join(' '), surname }
     const individual: GedcomIndividual = {
       ...(existing || {
         xrefId,
@@ -525,7 +529,7 @@ export const useGedcomStore = () => {
         userData: {},
       }),
       xrefId,
-      names: [{ full: draft.fullName.trim(), given: words.join(' '), surname }],
+      names: [name],
       sex: draft.sex,
       birth: createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date),
       death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date),

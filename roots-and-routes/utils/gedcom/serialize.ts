@@ -1,3 +1,4 @@
+import { parseGedcomName } from './names'
 import type { GedcomFile, GedcomIndividual, GedcomFamily, GedcomSource, GedcomRepository, GedcomMultimedia, GedcomNote, GedcomMetadata, GedcomLine } from '~~/types/gedcom'
 
 // Maps are not serializable by JSON.stringify (they become {}), so GedcomFile
@@ -66,6 +67,14 @@ export function serializeGedcomFile(file: GedcomFile): SerializedGedcomFile {
   }
 }
 
+// Data imported before names were cleaned at import time still has "Jan /Mikulik/" in `full`: parse it again
+const cleanNames = (individuals: Map<string, GedcomIndividual>): Map<string, GedcomIndividual> => {
+  for (const person of individuals.values()) {
+    person.names = (person.names ?? []).map(name => (name.full?.includes('/') ? { ...name, ...parseGedcomName(name.full), type: name.type } : name))
+  }
+  return individuals
+}
+
 export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomFile {
   return {
     version: serialized.version,
@@ -73,7 +82,7 @@ export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomF
     source: serialized.source,
     date: new Date(serialized.date),
     copyright: serialized.copyright,
-    individuals: reviveDates(toMap(serialized.individuals)),
+    individuals: cleanNames(reviveDates(toMap(serialized.individuals))),
     families: reviveDates(toMap(serialized.families)),
     sources: toMap(serialized.sources),
     repositories: toMap(serialized.repositories),

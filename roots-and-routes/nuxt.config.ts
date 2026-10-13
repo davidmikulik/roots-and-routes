@@ -1,4 +1,25 @@
 import { defineNuxtConfig } from 'nuxt/config'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+
+// Build information, computed every time the app is built (and when the dev server starts), shown in Settings -> About.
+// The number is the build time (UTC, YYYYMMDD.HHMM), so every build gets a new, increasing number; the commit
+// tells which code it is. Vercel provides the commit in VERCEL_GIT_COMMIT_SHA; locally it comes from git.
+const buildTime = new Date()
+const pad = (value: number) => String(value).padStart(2, '0')
+const gitCommit = (() => {
+  try {
+    return execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return ''
+  }
+})()
+const buildInfo = {
+  version: (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version,
+  number: `${buildTime.getUTCFullYear()}${pad(buildTime.getUTCMonth() + 1)}${pad(buildTime.getUTCDate())}.${pad(buildTime.getUTCHours())}${pad(buildTime.getUTCMinutes())}`,
+  time: buildTime.toISOString(),
+  commit: (process.env.VERCEL_GIT_COMMIT_SHA || gitCommit).slice(0, 7),
+}
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -55,6 +76,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       appName: 'Roots & Routes',
+      build: buildInfo,
       appDescription: 'Genealogy visualization application',
       map: {
         defaultCenter: [50.0755, 14.4378],

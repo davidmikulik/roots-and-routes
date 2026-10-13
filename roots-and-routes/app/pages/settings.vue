@@ -120,6 +120,13 @@ watch([() => adminAuth.isAdmin.value, activeSection], ([isAdmin, section]) => {
   if (isAdmin && section === 'data') loadBackups()
 }, { immediate: true })
 
+// Filled in at build time by nuxt.config.ts
+const build = useRuntimeConfig().public.build as { version: string; number: string; time: string; commit: string }
+// The time is shown in the viewer's time zone, which the server does not know: render it only in the browser
+const isClient = ref(false)
+onMounted(() => { isClient.value = true })
+const builtAt = computed(() => new Date(build.time).toLocaleString(settings.value.language === 'cs' ? 'cs-CZ' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' }))
+
 const cardClass = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6'
 const selectClass = 'px-4 py-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white'
 const rangeClass = 'w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer'
@@ -361,7 +368,11 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
             <div class="flex items-start gap-4">
               <span class="text-3xl">🌳</span>
               <div>
-                <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('settings.about.version') }}</h3>
+                <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('settings.about.version', { version: build.version }) }}</h3>
+                <p data-build-number class="text-sm" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">
+                  {{ t('settings.about.build', { number: build.number }) }}<template v-if="build.commit"> · {{ t('settings.about.commit', { commit: build.commit }) }}</template>
+                </p>
+                <p v-if="isClient" data-build-time class="text-sm" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">{{ t('settings.about.builtAt', { date: builtAt }) }}</p>
                 <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.about.built') }}</p>
               </div>
             </div>

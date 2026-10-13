@@ -4,6 +4,7 @@ import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings, LANGUAGES } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
+import { useAnonymize } from '~~/composables/useAnonymize'
 
 interface BackupInfo { id: string; createdAt: string; size: number }
 
@@ -14,6 +15,7 @@ const appSettings = useSettings()
 const settings = appSettings.settings
 const adminAuth = useAdminAuth()
 const gedcomStore = useGedcomStore()
+const anon = useAnonymize()
 
 const activeSection = ref('general')
 const message = ref<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -332,7 +334,14 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
             <h2 class="text-xl font-bold mb-6" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               {{ t('settings.privacy.title') }}
             </h2>
-            <SettingsToggle v-model="settings.privacy.anonymousMode" icon="👤" :label="t('settings.privacy.anonymous')" :description="t('settings.privacy.anonymousHint')" />
+            <SettingsToggle
+              :model-value="anon.enabled.value"
+              :disabled="!adminAuth.isAdmin.value"
+              icon="👤"
+              :label="t('settings.privacy.anonymous')"
+              :description="adminAuth.isAdmin.value ? t('settings.privacy.anonymousHint') : t('settings.privacy.anonymousForced')"
+              @update:model-value="settings.privacy.anonymousMode = $event"
+            />
           </div>
           <div :class="cardClass">
             <h3 class="text-lg font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">

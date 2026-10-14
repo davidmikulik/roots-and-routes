@@ -62,7 +62,36 @@ export interface IndividualDraft {
   marriageLatitude: string
   marriageLongitude: string
   events: IndividualEventDraft[]
+  links: LinkDraft[]
 }
+
+// A link of a person (a GEDCOM OBJE record). `file` is set when the image or document was copied into the tree
+// (media/<name>, served by /api/media/<name>); `url` is then the original address.
+export interface LinkDraft {
+  id?: string
+  url: string
+  title: string
+  file?: string
+  format?: string
+}
+
+export interface CopiedMedia {
+  file: string
+  format: string
+  kind: 'image' | 'document'
+  contentType: string
+  size: number
+}
+
+export const isStoredMedia = (file?: string): file is string => !!file && file.startsWith('media/')
+
+// The links of a person for the editor and the detail
+export const linksOf = (file: GedcomFile, individual: GedcomIndividual): LinkDraft[] => individual.multimediaLinks
+  .map(id => file.multimedia.get(id))
+  .filter((media): media is NonNullable<typeof media> => !!media && !!media.file)
+  .map(media => isStoredMedia(media.file)
+    ? { id: media.xrefId, url: media.url || '', title: media.title || '', file: media.file, format: media.format }
+    : { id: media.xrefId, url: media.file!, title: media.title || '' })
 
 const DATABASE_NAME = 'roots-and-routes'
 const STORE_NAME = 'gedcom'
@@ -533,6 +562,38 @@ export const useGedcomStore = () => {
     }
   }
 
+  // Writes the links of the editor as OBJE records. A record the person no longer links to is removed when nobody else
+  // uses it. Every link needs an address and a description.
+  const saveLinks = (file: GedcomFile, ownerId: string, previous: string[], links: LinkDraft[]): string[] => {
+    const ids: string[] = []
+    for (const link of links) {
+      const url = link.url.trim()
+      const title = link.title.trim()
+      if (!url || !title) throw new Error(t('tree.links.required'))
+      const id = link.id && file.multimedia.has(link.id) ? link.id : (() => {
+        let number = 1
+        while (file.multimedia.has(`M${number}`)) number++
+        return `M${number}`
+      })()
+      file.multimedia.set(id, {
+        notes: [],
+        userData: {},
+        ...file.multimedia.get(id),
+        xrefId: id,
+        title,
+        ...(isStoredMedia(link.file)
+          ? { file: link.file, url, format: link.format }
+          : { file: url, url: undefined, format: 'url' }),
+      })
+      ids.push(id)
+    }
+    const others = [...[...file.individuals.values()].filter(person => person.xrefId !== ownerId), ...file.families.values()]
+    const usedElsewhere = new Set(others.flatMap(owner => owner.multimediaLinks || []))
+    for (const id of previous) if (!ids.includes(id) && !usedElsewhere.has(id)) file.multimedia.delete(id)
+    file.metadata.totalMultimedia = file.multimedia.size
+    return ids
+  }
+
   const savePerson = async (draft: IndividualDraft): Promise<string> => {
     requireEditable()
     const file = state.value.file
@@ -569,6 +630,7 @@ export const useGedcomStore = () => {
       birth: createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date),
       death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date),
       notes: draft.notes.split(/\r?\n/).map(note => note.trim()).filter(Boolean),
+      multimediaLinks: saveLinks(file, xrefId, existing?.multimediaLinks || [], draft.links),
       events: draft.events.map(event => createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate)).filter((event): event is GedcomEvent => Boolean(event)),
     }
     file.individuals.set(xrefId, individual)
@@ -739,6 +801,36 @@ export const useGedcomStore = () => {
     URL.revokeObjectURL(url)
   }
 
+  // "Zkopírovat": the server downloads the image or document behind the link and stores a copy in the tree
+  const copyLinkToTree = async (url: string): Promise<CopiedMedia> => {
+    requireEditable()
+    const response = await $fetch<{ data: CopiedMedia }>('/api/media/copy', { method: 'POST', headers: adminAuth.authHeaders(), body: { url } })
+    return response.data
+  }
+
+  // Copies are private (admin token), so a plain link cannot open them: fetch with the token and open the result.
+  // The window is opened before the request, otherwise the browser blocks it as a popup.
+  const openStoredMedia = async (path: string): Promise<void> => {
+    adminAuth.requireAdmin()
+    const opensInBrowser = /\.(jpg|png|gif|webp|pdf|txt)$/.test(path)
+    const target = opensInBrowser ? window.open('', '_blank') : null
+    try {
+      const blob = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+      const url = URL.createObjectURL(blob)
+      if (target) target.location.href = url
+      else {
+        const link = document.createElement('a')
+        link.href = url
+        link.download = path.split('/').pop() || 'document'
+        link.click()
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      target?.close()
+      throw error
+    }
+  }
+
   const searchPeople = (query: string): AppPerson[] => {
     const allPeople = getAllAppPersons()
     if (!query) return allPeople
@@ -773,6 +865,8 @@ export const useGedcomStore = () => {
     refreshFromServer,
     saveNow,
     downloadGedcom,
+    copyLinkToTree,
+    openStoredMedia,
     
     // Helpers
     getAllAppPersons,

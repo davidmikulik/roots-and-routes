@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
-import type { IndividualDraft } from '~~/composables/useGedcomStore'
+import { isStoredMedia, linksOf } from '~~/composables/useGedcomStore'
+import type { IndividualDraft, LinkDraft } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import { useSettings } from '~~/composables/useSettings'
@@ -77,7 +78,7 @@ function createEmptyDraft(): IndividualDraft {
     fullName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
     deathDate: '', deathPlace: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
-    marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [],
+    marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
   }
 }
 
@@ -225,12 +226,56 @@ const openPersonEditor = (person?: AppPerson) => {
       latitude: event.coordinates?.[0]?.toString() || '', longitude: event.coordinates?.[1]?.toString() || '',
       description: event.description || '',
     })),
+    links: file ? linksOf(file, individual) : [],
   } : createEmptyDraft()
+  copyingLinks.value = new Set()
   editorOpen.value = true
 }
 
 const addEvent = () => personForm.value.events.push(createEmptyEventDraft())
 const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
+
+// Links: any number, each with a required description; an image or document can be copied into the tree
+const addLink = () => personForm.value.links.push({ url: '', title: '' })
+const removeLink = (index: number) => personForm.value.links.splice(index, 1)
+// A new address no longer matches the stored copy
+const changeLinkUrl = (link: LinkDraft) => {
+  link.file = undefined
+  link.format = undefined
+}
+const copyingLinks = ref(new Set<LinkDraft>())
+const copiedSizes = ref(new Map<LinkDraft, number>())
+const isWebAddress = (value: string) => /^https?:\/\/\S+$/i.test(value.trim())
+const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} kB`
+const copyLink = async (link: LinkDraft) => {
+  copyingLinks.value = new Set(copyingLinks.value).add(link)
+  try {
+    const copied = await gedcomStore.copyLinkToTree(link.url.trim())
+    link.file = copied.file
+    link.format = copied.format
+    copiedSizes.value = new Map(copiedSizes.value).set(link, copied.size)
+  } catch (error) {
+    window.alert(t('tree.links.copyFailed', { error: errorText(error) }))
+  } finally {
+    const next = new Set(copyingLinks.value)
+    next.delete(link)
+    copyingLinks.value = next
+  }
+}
+const openCopy = async (path: string) => {
+  try {
+    await gedcomStore.openStoredMedia(path)
+  } catch (error) {
+    window.alert(errorText(error))
+  }
+}
+
+// Links of the selected person for the detail (visitors get none: the anonymized data have no links)
+const selectedLinks = computed(() => {
+  const file = gedcomStore.state.value.file
+  const individual = selectedPerson.value ? gedcomStore.individuals.value.get(selectedPerson.value.id) : undefined
+  return file && individual ? linksOf(file, individual) : []
+})
 
 // Pasting "lat, lng" into either coordinate field fills both fields
 const pasteCoordinates = (event: ClipboardEvent, target: Record<string, any>, latitudeKey: string, longitudeKey: string) => {
@@ -605,6 +650,19 @@ const deletePerson = async (person: AppPerson) => {
                 </HoverTip>
               </div>
             </div>
+
+            <div v-if="selectedLinks.length" class="mt-4">
+              <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
+                {{ t('tree.links.title') }}
+              </div>
+              <ul class="space-y-1 text-sm">
+                <li v-for="link in selectedLinks" :key="link.id">
+                  <button v-if="isStoredMedia(link.file)" type="button" @click="openCopy(link.file)" class="text-primary-700 dark:text-primary-300 underline text-left">📎 {{ link.title }}</button>
+                  <a v-else-if="isWebAddress(link.url)" :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
+                  <span v-else class="break-all">{{ link.title }} ({{ link.url }})</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -697,6 +755,43 @@ const deletePerson = async (person: AppPerson) => {
               <div class="flex gap-2">
                 <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.longitude')">
                 <button type="button" @click="removeEvent(index)" class="px-3 text-red-600" :aria-label="t('tree.field.removeEvent', { n: index + 1 })">&times;</button>
+              </div>
+            </div>
+          </fieldset>
+          <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div class="flex items-center justify-between mb-3">
+              <legend class="font-medium">{{ t('tree.links.title') }}</legend>
+              <button type="button" @click="addLink" class="text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.links.add') }}</button>
+            </div>
+            <div v-for="(link, index) in personForm.links" :key="index" data-link-row class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
+              <input
+                v-model="link.url"
+                @input="changeLinkUrl(link)"
+                inputmode="url"
+                required
+                class="rounded border px-3 py-2 bg-transparent"
+                :placeholder="t('tree.links.url')"
+                :aria-label="t('tree.links.url')"
+              >
+              <div class="flex gap-2">
+                <input v-model="link.title" required class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.links.description')" :aria-label="t('tree.links.description')">
+                <button type="button" @click="removeLink(index)" class="px-3 text-red-600" :aria-label="t('tree.links.remove', { n: index + 1 })">&times;</button>
+              </div>
+              <div class="sm:col-span-2 flex flex-wrap items-center gap-3 text-sm">
+                <template v-if="isStoredMedia(link.file)">
+                  <span class="text-green-700 dark:text-green-400">
+                    📎 {{ copiedSizes.get(link) ? t('tree.links.stored', { format: (link.format || '').toUpperCase(), size: formatSize(copiedSizes.get(link)!) }) : t('tree.links.storedShort') }}
+                  </span>
+                  <button type="button" @click="openCopy(link.file!)" class="underline">{{ t('tree.links.openCopy') }}</button>
+                </template>
+                <HoverTip v-else :text="t('tree.links.copyHint')">
+                  <button
+                    type="button"
+                    @click="copyLink(link)"
+                    :disabled="!isWebAddress(link.url) || copyingLinks.has(link)"
+                    class="px-3 py-1 rounded border disabled:opacity-50"
+                  >{{ copyingLinks.has(link) ? t('tree.links.copying') : t('tree.links.copy') }}</button>
+                </HoverTip>
               </div>
             </div>
           </fieldset>

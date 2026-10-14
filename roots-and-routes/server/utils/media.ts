@@ -1,0 +1,118 @@
+// Copies of linked images and documents stored in the tree (button "Zkopírovat" in the person editor).
+// The server downloads the file itself, so the URL is checked first: http(s) only, no addresses of private networks
+// (also after every redirect), a size limit and an allow-list of image and document types.
+import { randomUUID } from 'node:crypto'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
+import { put, get } from '@vercel/blob'
+
+export const MEDIA_DIR = 'uploads/gedcom/media'
+const MAX_BYTES = 20 * 1024 * 1024
+const MAX_REDIRECTS = 5
+const TIMEOUT_MS = 20_000
+
+type MediaKind = 'image' | 'document'
+const TYPES: Record<string, { ext: string; kind: MediaKind }> = {
+  'image/jpeg': { ext: 'jpg', kind: 'image' },
+  'image/png': { ext: 'png', kind: 'image' },
+  'image/gif': { ext: 'gif', kind: 'image' },
+  'image/webp': { ext: 'webp', kind: 'image' },
+  'application/pdf': { ext: 'pdf', kind: 'document' },
+  'text/plain': { ext: 'txt', kind: 'document' },
+  'application/rtf': { ext: 'rtf', kind: 'document' },
+  'application/msword': { ext: 'doc', kind: 'document' },
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { ext: 'docx', kind: 'document' },
+  'application/vnd.oasis.opendocument.text': { ext: 'odt', kind: 'document' },
+  'application/vnd.ms-excel': { ext: 'xls', kind: 'document' },
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { ext: 'xlsx', kind: 'document' },
+  'application/vnd.oasis.opendocument.spreadsheet': { ext: 'ods', kind: 'document' },
+}
+const BY_EXTENSION = Object.fromEntries(Object.entries(TYPES).map(([contentType, info]) => [info.ext, contentType]))
+BY_EXTENSION.jpeg = 'image/jpeg'
+
+export interface CopiedMedia {
+  file: string
+  format: string
+  kind: MediaKind
+  contentType: string
+  size: number
+}
+
+const isPrivateAddress = (address: string): boolean => {
+  if (isIP(address) === 6) {
+    const lower = address.toLowerCase()
+    if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice(7))
+    return lower === '::1' || lower === '::' || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower)
+  }
+  const [a, b] = address.split('.').map(Number)
+  return a === 0 || a === 10 || a === 127 || (a === 100 && b! >= 64 && b! <= 127) || (a === 169 && b === 254)
+    || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19)) || a! >= 224
+}
+
+const checkUrl = async (raw: string): Promise<URL> => {
+  let url: URL
+  try { url = new URL(raw) } catch { throw createError({ statusCode: 400, statusMessage: 'Invalid URL' }) }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw createError({ statusCode: 400, statusMessage: 'Only http and https links can be copied' })
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+  const addresses = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => [])).map(entry => entry.address)
+  if (addresses.length === 0) throw createError({ statusCode: 400, statusMessage: 'The address of the link cannot be found' })
+  if (addresses.some(isPrivateAddress)) throw createError({ statusCode: 400, statusMessage: 'Links to private networks cannot be copied' })
+  return url
+}
+
+// Follows redirects by hand so every hop is checked
+const download = async (raw: string): Promise<Response> => {
+  let url = await checkUrl(raw)
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS), headers: { 'user-agent': 'RootsAndRoutes/1.0 (+https://nase-koreny.mikulik.com)' } })
+    const location = response.headers.get('location')
+    if (response.status >= 300 && response.status < 400 && location) {
+      url = await checkUrl(new URL(location, url).toString())
+      continue
+    }
+    if (!response.ok) throw createError({ statusCode: 502, statusMessage: `The link answered ${response.status}` })
+    return response
+  }
+  throw createError({ statusCode: 502, statusMessage: 'Too many redirects' })
+}
+
+const readLimited = async (response: Response): Promise<Buffer> => {
+  if (Number(response.headers.get('content-length') || 0) > MAX_BYTES) throw createError({ statusCode: 413, statusMessage: 'The file is larger than 20 MB' })
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const reader = response.body!.getReader()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > MAX_BYTES) { await reader.cancel(); throw createError({ statusCode: 413, statusMessage: 'The file is larger than 20 MB' }) }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks)
+}
+
+export async function copyRemoteMedia(rawUrl: string, token: string): Promise<CopiedMedia> {
+  const response = await download(rawUrl)
+  const extension = new URL(response.url || rawUrl).pathname.split('.').pop()?.toLowerCase() || ''
+  let contentType = (response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase()
+  // Servers often send files as a generic binary stream: then the extension decides
+  if (!TYPES[contentType] && ['application/octet-stream', 'binary/octet-stream', ''].includes(contentType)) contentType = BY_EXTENSION[extension] || contentType
+  const type = TYPES[contentType]
+  if (!type) throw createError({ statusCode: 415, statusMessage: `The link does not lead to an image or a document (${contentType || 'unknown type'})` })
+  const body = await readLimited(response)
+  const file = `media/${randomUUID()}.${type.ext}`
+  await put(`uploads/gedcom/${file}`, body, { access: 'private', token, contentType, addRandomSuffix: false })
+  return { file, format: type.ext, kind: type.kind, contentType, size: body.length }
+}
+
+// Only names made by copyRemoteMedia, so the request cannot read other blobs
+export const isMediaName = (name: string): boolean => /^[0-9a-f-]{36}\.[a-z]{3,4}$/.test(name)
+
+export async function readMedia(name: string, token: string) {
+  const blob = await get(`${MEDIA_DIR}/${name}`, { access: 'private', token })
+  if (!blob?.stream) throw createError({ statusCode: 404, statusMessage: 'File not found' })
+  const contentType = BY_EXTENSION[name.split('.').pop()!] || 'application/octet-stream'
+  // Images, PDF and text open in the browser; office documents are downloaded
+  const inline = TYPES[contentType]?.kind === 'image' || contentType === 'application/pdf' || contentType === 'text/plain'
+  return { stream: blob.stream, contentType, inline }
+}

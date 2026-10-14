@@ -512,6 +512,10 @@ class GedcomParser {
       case 'FORM':
         multimedia.format = value
         break
+      // Our own tag: the original address of a file copied into the tree (FILE then points to the copy)
+      case '_URL':
+        multimedia.url = value
+        break
       case 'NOTE':
         if (xrefId) multimedia.notes.push(xrefId)
         else if (value) multimedia.notes.push(value)
@@ -839,6 +843,11 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
       lines.push(`1 SOUR @${citation.xref.replace(/@/g, '')}@`)
       if (citation.page) lines.push(`2 PAGE ${citation.page}`)
     }
+
+    // Links, images and documents (OBJE records below)
+    for (const media of individual.multimediaLinks) {
+      lines.push(`1 OBJE @${media.replace(/@/g, '')}@`)
+    }
   }
   
   // Families
@@ -879,6 +888,10 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     for (const citation of family.sourceCitations || []) {
       lines.push(`1 SOUR @${citation.xref.replace(/@/g, '')}@`)
     }
+
+    for (const media of family.multimediaLinks || []) {
+      lines.push(`1 OBJE @${media.replace(/@/g, '')}@`)
+    }
   }
   
   // Sources
@@ -887,6 +900,20 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     if (source.title) lines.push(`1 TITL ${source.title}`)
     if (source.author) lines.push(`1 AUTH ${source.author}`)
     if (source.publication) lines.push(`1 PUBL ${source.publication}`)
+  }
+
+  // Multimedia (GEDCOM 5.5.1 layout: FORM and TITL under FILE). FILE is a web address, or media/<name> for a copy
+  // stored in the tree; the original address of a copy goes to our own _URL tag
+  const oneLine = (value: string) => value.replace(/\s*[\r\n]+\s*/g, ' ').trim()
+  for (const [xrefId, media] of file.multimedia) {
+    lines.push(`0 @${xrefId.replace(/@/g, '')}@ OBJE`)
+    if (media.file) {
+      lines.push(`1 FILE ${oneLine(media.file)}`)
+      if (media.format) lines.push(`2 FORM ${oneLine(media.format)}`)
+      if (media.title) lines.push(`2 TITL ${oneLine(media.title)}`)
+    }
+    if (media.url && media.url !== media.file) lines.push(`1 _URL ${oneLine(media.url)}`)
+    for (const note of media.notes) lines.push(`1 NOTE ${oneLine(note)}`)
   }
   
   // Trailer

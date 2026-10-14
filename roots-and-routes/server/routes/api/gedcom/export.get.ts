@@ -2,8 +2,12 @@
 import { writeGedcom } from '~~/utils/gedcom/parser'
 import { loadParsedGedcom } from '~~/server/utils/storage'
 import type { GedcomFile } from '~~/types'
+import { requireAdminToken } from '~~/server/utils/adminAuth'
 
+// Full data: administrator only, like the import
 export default defineEventHandler(async (event) => {
+  requireAdminToken(event)
+  setResponseHeaders(event, { 'cache-control': 'private, no-store' })
   try {
     const query = getQuery(event)
     const fileId = query.fileId as string

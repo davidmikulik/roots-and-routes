@@ -11,7 +11,7 @@ Jediný klientský store je `composables/useGedcomStore.ts` (`useState('gedcom-s
 
 ```ts
 const doSomething = async (...): Promise<void> => {
-  adminAuth.requireAdmin()                 // 1. jen admin
+  requireEditable()                        // 1. jen admin a nikdy na anonymních datech
   const file = state.value.file
   if (!file) return
   // 2. změň file.individuals / file.families (jsou to Map) a udrž vazby oběma směry:

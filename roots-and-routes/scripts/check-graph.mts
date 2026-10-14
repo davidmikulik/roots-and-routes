@@ -3,7 +3,8 @@
 //   npx jiti scripts/check-graph.mts [get.json]
 //
 // Without an argument only the synthetic cases run. With the path of a saved response of GET /api/gedcom/get
-// (for example `curl https://nase-koreny.mikulik.com/api/gedcom/get -o get.json`) every person is also used as the
+// (for example `curl -H "Authorization: Bearer $ADMIN_API_TOKEN" https://nase-koreny.mikulik.com/api/gedcom/get -o get.json`;
+// without the token the anonymized copy comes, which works too) every person is also used as the
 // root of a layout and the result is checked: no exception, under 200 ms, no overlapping cards, parents above and
 // children below, everyone who should be shown has a card, every parent-child pair is joined by connectors.
 // Exit code 1 when a check fails.

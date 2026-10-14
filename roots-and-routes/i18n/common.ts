@@ -32,6 +32,7 @@ export default defineMessages({
   'admin.invalidToken': 'The administrator token is not valid.',
   'admin.loginFailed': 'Login failed.',
   'admin.required': 'Administrator login is required for changes.',
+  'admin.dataAnonymized': 'The anonymized data for visitors are loaded. Reload the page and try again.',
   'admin.unavailable': 'Administration is not configured on the server (ADMIN_API_TOKEN).',
 }, {
   'app.name': 'Roots & Routes',
@@ -65,5 +66,6 @@ export default defineMessages({
   'admin.invalidToken': 'Token správce není platný.',
   'admin.loginFailed': 'Přihlášení se nepodařilo.',
   'admin.required': 'Pro změny se musíte přihlásit jako správce.',
+  'admin.dataAnonymized': 'Načtená jsou anonymní data pro návštěvníky. Obnovte stránku a zkuste to znovu.',
   'admin.unavailable': 'Správa není na serveru nastavena (ADMIN_API_TOKEN).',
 })

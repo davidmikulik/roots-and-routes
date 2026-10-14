@@ -2,6 +2,8 @@
 import { loadParsedGedcom, listUserFiles, getFileText } from '~~/server/utils/storage'
 import { parseGedcom } from '~~/utils/gedcom/parser'
 import { serializeGedcomFile } from '~~/utils/gedcom/serialize'
+import { isAdminRequest } from '~~/server/utils/adminAuth'
+import { anonymizeGedcomFile } from '~~/server/utils/anonymizeGedcom'
 import type { GedcomFile, GedcomParseResult } from '~~/types'
 
 // Helper function to re-parse original GEDCOM file if parsed data is corrupted
@@ -58,6 +60,9 @@ function isParsedDataCorrupted(file: GedcomFile): boolean {
 
 export default defineEventHandler(async (event) => {
   console.log('[GEDCOM GET] Starting...')
+  // The answer depends on the Authorization header: never let a cache hand the administrator's data to a visitor
+  setResponseHeaders(event, { 'cache-control': 'private, no-store', vary: 'Authorization' })
+  const admin = isAdminRequest(event)
   try {
     const query = getQuery(event)
     const fileId = query.fileId as string | undefined
@@ -177,14 +182,16 @@ export default defineEventHandler(async (event) => {
       }
     }
     
-    console.log(`[GEDCOM GET] Returning data with ${gedcomData?.metadata.totalIndividuals || 0} individuals`)
+    console.log(`[GEDCOM GET] Returning ${admin ? 'full' : 'anonymized'} data with ${gedcomData?.metadata.totalIndividuals || 0} individuals`)
     return {
       success: true,
       message: 'GEDCOM data loaded successfully',
       data: {
-        // Maps would be lost in JSON (become {}), send them as entry arrays
-        file: serializeGedcomFile(gedcomData),
-        fileInfo
+        // Maps would be lost in JSON (become {}), send them as entry arrays.
+        // Visitors who are not logged in get an anonymized copy (names → initials, dates → year, no places)
+        file: serializeGedcomFile(admin ? gedcomData : anonymizeGedcomFile(gedcomData)),
+        fileInfo,
+        anonymized: !admin,
       },
       timestamp: new Date().toISOString(),
     }

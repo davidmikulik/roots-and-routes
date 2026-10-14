@@ -7,6 +7,13 @@ const getExpectedToken = (): string => process.env.ADMIN_API_TOKEN || process.en
 const tokensMatch = (provided: string, expected: string): boolean =>
   timingSafeEqual(createHash('sha256').update(provided).digest(), createHash('sha256').update(expected).digest())
 
+// For endpoints that answer everybody but give the administrator more (GET /api/gedcom/get)
+export function isAdminRequest(event: H3Event): boolean {
+  const expectedToken = getExpectedToken()
+  const providedToken = (getHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
+  return !!expectedToken && !!providedToken && tokensMatch(providedToken, expectedToken)
+}
+
 export function requireAdminToken(event: H3Event): void {
   const expectedToken = getExpectedToken()
   if (!expectedToken) {

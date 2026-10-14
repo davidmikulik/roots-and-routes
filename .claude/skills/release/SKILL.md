@@ -28,7 +28,7 @@ curl -s https://nase-koreny.mikulik.com/settings | grep -o 'commit:"[^"]*"\|numb
 ```
 Číslo se objeví ve vykresleném HTML, protože `/settings` se neprerenderuje. Když po pár minutách pořád ukazuje starý commit, napiš to uživateli: deploy na Vercelu nejspíš selhal nebo čeká.
 
-- Rychlá kontrola dat: `curl -s https://nase-koreny.mikulik.com/api/gedcom/get | head -c 300` musí vrátit `"success":true`.
+- Rychlá kontrola dat: `curl -s https://nase-koreny.mikulik.com/api/gedcom/get | head -c 300` musí vrátit `"success":true` (bez tokenu jsou to anonymní data, `"anonymized":true` je na konci odpovědi).
 - Po změně toku dat (store, `/api/gedcom/*`, Blob) připomeň uživateli, ať na produkci zkusí import nebo editaci, potom reload.
 
 ## Ruční deploy (jen na vyžádání)

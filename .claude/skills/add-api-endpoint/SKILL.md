@@ -11,7 +11,8 @@ Routy jsou v `server/routes/api/` a název souboru určuje metodu (`save.post.ts
 
 - `server/middleware/adminWrites.ts` vyžaduje `Authorization: Bearer <ADMIN_API_TOKEN>` u všeho kromě GET/HEAD/OPTIONS a u všeho pod `/api/admin/**`.
 - Endpoint, který zapisuje, i tak volá `requireAdminToken(event)` jako první řádek (`~~/server/utils/adminAuth`), aby zůstal chráněný, i kdyby se middleware změnil.
-- Veřejné je jen čtení stromu (`/api/gedcom/get`, `/api/gedcom/export`). Vrací plná data, anonymizace je jen v UI.
+- Veřejné je jen `GET /api/gedcom/get`, a to nepřihlášenému vrací anonymní kopii (`isAdminRequest` + `anonymizeGedcomFile`). Kdo přidá další čtecí endpoint s osobními údaji, musí ho buď uzavřít (`requireAdminToken`), nebo anonymizovat stejně, a nastavit `cache-control: private, no-store` a `vary: Authorization`.
+- `/api/gedcom/export` je jen pro admina.
 
 ## Vzor (zápis)
 

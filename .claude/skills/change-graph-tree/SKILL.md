@@ -28,7 +28,7 @@ Zadání je v `docs/graficky-strom-zadani.md` (kořen repa).
 
 ```bash
 cd roots-and-routes
-curl -s https://nase-koreny.mikulik.com/api/gedcom/get -o <scratchpad>/get.json
+curl -s -H "Authorization: Bearer $ADMIN_API_TOKEN" https://nase-koreny.mikulik.com/api/gedcom/get -o <scratchpad>/get.json   # bez tokenu přijdou anonymní data
 npm run check:graph -- <scratchpad>/get.json   # každá osoba jako kořen; exit 1 = chyba
 ```
 Bez argumentu se spustí jen syntetické případy. Potom skill `verify-change` a vizuálně skill `test-ui` (posun, přiblížení, telefon).

@@ -10,7 +10,7 @@ description: Ruční nebo automatizované ověření UI Roots & Routes v prohlí
 ```bash
 cd roots-and-routes && npm run dev   # na pozadí; http://localhost:3000
 ```
-Pro data ze serveru je potřeba `.env` s `BLOB_READ_WRITE_TOKEN`. Bez něj použij zachycení požadavků v prohlížeči a podstrč odpověď `GET /api/gedcom/get`, třeba stáhnutou z produkce: `curl https://nase-koreny.mikulik.com/api/gedcom/get -o get.json` (soubor ulož do scratchpadu, ne do repa).
+Pro data ze serveru je potřeba `.env` s `BLOB_READ_WRITE_TOKEN`. Bez něj použij zachycení požadavků v prohlížeči a podstrč odpověď `GET /api/gedcom/get`, třeba stáhnutou z produkce: `curl -s -H "Authorization: Bearer $ADMIN_API_TOKEN" https://nase-koreny.mikulik.com/api/gedcom/get -o get.json` (soubor ulož do scratchpadu, ne do repa). Bez tokenu přijde anonymní kopie, kterou dostává nepřihlášený návštěvník (iniciály, jen roky, žádné body na mapě). Pro test obou stavů podstrč podle hlavičky `Authorization` plná, nebo anonymní data. Token ber z `.env`, nikam ho nevypisuj. Když ho nemáš, zeptej se uživatele.
 
 ## Headless Chrome
 

@@ -1,4 +1,4 @@
-import { computed, onMounted } from 'vue'
+import { computed, effectScope, onMounted, watch } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
@@ -7,6 +7,7 @@ import { parseGedcomName } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
+import { useT } from '~~/composables/useT'
 
 interface GedcomState {
   file: GedcomFile | null
@@ -17,6 +18,8 @@ interface GedcomState {
   error: string | null
   // Edits that were not sent to the server yet (only when auto-save is off)
   dirty: boolean
+  // The server sent the anonymized copy for visitors (not logged in): it must never be edited, saved or exported
+  anonymized: boolean
 }
 
 export interface GedcomDuplicate {
@@ -105,7 +108,7 @@ const deleteContent = async (): Promise<void> => {
   database.close()
 }
 
-const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; parseResult: GedcomParseResult; fileId: string } | null> => {
+const loadFromServer = async (headers: Record<string, string>, fileId?: string): Promise<{ file: GedcomFile; parseResult: GedcomParseResult; fileId: string; anonymized: boolean } | null> => {
   if (!import.meta.client) return null
   try {
     const url = fileId ? `/api/gedcom/get?fileId=${fileId}` : '/api/gedcom/get'
@@ -115,8 +118,9 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
       data: {
         file: SerializedGedcomFile
         fileInfo: { id: string; name: string; createdAt?: Date }
+        anonymized?: boolean
       }
-    }>(url)
+    }>(url, { headers })
     
     console.log('[GEDCOM] Server response:', { success: response.success, hasFile: !!response.data?.file })
     
@@ -137,7 +141,7 @@ const loadFromServer = async (fileId?: string): Promise<{ file: GedcomFile; pars
       }
     }
     
-    return { file, parseResult, fileId: response.data.fileInfo.id }
+    return { file, parseResult, fileId: response.data.fileInfo.id, anonymized: !!response.data.anonymized }
   } catch (error) {
     console.error('[GEDCOM] Failed to load GEDCOM from server:', error)
     return null
@@ -152,6 +156,7 @@ const createEmptyState = (): GedcomState => ({
   isLoading: false,
   error: null,
   dirty: false,
+  anonymized: false,
 })
 
 const normalizedName = (individual: GedcomIndividual): string => (individual.names[0]?.full || '')
@@ -197,13 +202,26 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
     : undefined
 }
 
+// Shared by every useGedcomStore() call
+let latestRequest = 0
+let authWatcher: ReturnType<typeof effectScope> | null = null
+
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
   const adminAuth = useAdminAuth()
   const appSettings = useSettings()
+  const { t } = useT()
+
+  // Every change, save and export: only the administrator, and never on the anonymized copy for visitors
+  // (saving it would overwrite the real tree with initials and years)
+  const requireEditable = () => {
+    adminAuth.requireAdmin()
+    if (state.value.anonymized) throw new Error(t('admin.dataAnonymized'))
+  }
 
   // Persist the current file to the server; needs the admin token and throws on failure
   const saveToServer = async (file: GedcomFile): Promise<void> => {
+    requireEditable()
     if (!state.value.fileId) return
     await $fetch('/api/gedcom/save', {
       method: 'POST',
@@ -221,18 +239,23 @@ export const useGedcomStore = () => {
 
   // Manual save for when auto-save is off
   const saveNow = async (): Promise<void> => {
-    adminAuth.requireAdmin()
+    requireEditable()
     if (state.value.file) await saveToServer(state.value.file)
   }
 
-  // Method to explicitly load data from server
+  // Loads the tree from the server: full data with the admin token, the anonymized copy without it.
+  // Only the newest request may write the state (a slow anonymous answer must not replace a newer full one).
   const refreshFromServer = async (): Promise<boolean> => {
+    // The saved token is normally restored in app.vue's onMounted, which runs after the pages' onMounted
+    adminAuth.restore()
+    const request = ++latestRequest
     try {
       console.log('[GEDCOM] Loading from server...')
-      const serverData = await loadFromServer()
+      const serverData = await loadFromServer(adminAuth.authHeaders())
+      if (request !== latestRequest) return !!serverData
       if (serverData) {
-        console.log(`[GEDCOM] Loaded ${serverData.file.metadata.totalIndividuals} individuals from server`)
-        state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId }
+        console.log(`[GEDCOM] Loaded ${serverData.file.metadata.totalIndividuals} individuals from server${serverData.anonymized ? ' (anonymized)' : ''}`)
+        state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId, anonymized: serverData.anonymized }
         return true
       } else {
         console.log('[GEDCOM] No data found on server')
@@ -273,6 +296,16 @@ export const useGedcomStore = () => {
     })
   }
 
+  // Logging in must bring the full data and logging out must drop it. One watcher for the whole app, outside any
+  // component scope (it would stop when the page that created it unmounts). Unsaved edits are kept.
+  if (import.meta.client && !authWatcher) {
+    authWatcher = effectScope(true)
+    authWatcher.run(() => watch(adminAuth.isAdmin, (isAdmin) => {
+      if (state.value.dirty || !state.value.file) return
+      if (isAdmin === state.value.anonymized) void refreshFromServer()
+    }))
+  }
+
   // Computed properties
   const individuals = computed(() => state.value.file?.individuals || new Map())
   const families = computed(() => state.value.file?.families || new Map())
@@ -290,12 +323,13 @@ export const useGedcomStore = () => {
       userId: userId || state.value.userId,
       isLoading: false,
       error: null,
-      dirty: state.value.dirty
+      dirty: state.value.dirty,
+      anonymized: state.value.anonymized,
     }
   }
 
   const refreshLocationCoordinates = async (knownLocations: KnownLocation[]): Promise<number> => {
-    adminAuth.requireAdmin()
+    requireEditable()
     const file = state.value.file
     if (!file) return 0
     const matched = applyKnownLocations(file, knownLocations, true)
@@ -323,6 +357,7 @@ export const useGedcomStore = () => {
       setFile(result.file, result, fileId, userId)
       // The import endpoint already stored this file on the server
       state.value.dirty = false
+      state.value.anonymized = false
       if (import.meta.client) {
         try {
           await saveContent(writeGedcom(result.file))
@@ -365,7 +400,7 @@ export const useGedcomStore = () => {
   }
 
   const mergeFile = async (incoming: GedcomFile, choices: Record<string, DuplicateChoice> = {}): Promise<void> => {
-    adminAuth.requireAdmin()
+    requireEditable()
     const { backupOnImport, backupCount } = appSettings.settings.value.data
     // Back up the server's tree before it is replaced by the merged one; a failed backup stops the merge
     if (import.meta.client && backupOnImport) {
@@ -499,7 +534,7 @@ export const useGedcomStore = () => {
   }
 
   const savePerson = async (draft: IndividualDraft): Promise<string> => {
-    adminAuth.requireAdmin()
+    requireEditable()
     const file = state.value.file
     if (!file) throw new Error('Import a GEDCOM file before editing people')
     const xrefId = draft.xrefId || (() => {
@@ -609,7 +644,7 @@ export const useGedcomStore = () => {
   }
 
   const removePerson = async (xrefId: string): Promise<void> => {
-    adminAuth.requireAdmin()
+    requireEditable()
     const file = state.value.file
     if (!file) return
     file.individuals.delete(xrefId)
@@ -692,7 +727,7 @@ export const useGedcomStore = () => {
 
   // Downloads the whole tree as a GEDCOM file, including edits not saved to the server yet; admin only, like the import
   const downloadGedcom = (): void => {
-    adminAuth.requireAdmin()
+    requireEditable()
     const file = state.value.file
     if (!file || !import.meta.client) return
     const blob = new Blob([writeGedcom(file)], { type: 'text/plain;charset=utf-8' })

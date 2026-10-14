@@ -6,7 +6,7 @@ import { useSettings, LANGUAGES } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
 import { useAnonymize } from '~~/composables/useAnonymize'
 
-interface BackupInfo { id: string; createdAt: string; size: number }
+interface BackupInfo { id: string; createdAt: string; size: number; attachments?: number }
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -320,6 +320,7 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                 <tr class="text-left border-b border-gray-200 dark:border-gray-700">
                   <th class="py-2">{{ t('settings.data.backupCreated') }}</th>
                   <th class="py-2">{{ t('settings.data.backupSize') }}</th>
+                  <th class="py-2">{{ t('settings.data.backupAttachments') }}</th>
                   <th class="py-2"></th>
                 </tr>
               </thead>
@@ -327,6 +328,7 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                 <tr v-for="backup in backups" :key="backup.id" class="border-b border-gray-100 dark:border-gray-700/50">
                   <td class="py-2">{{ formatDate(backup.createdAt) }}</td>
                   <td class="py-2">{{ formatSize(backup.size) }}</td>
+                  <td class="py-2">{{ backup.attachments ?? 0 }}</td>
                   <td class="py-2 text-right">
                     <button class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
                   </td>

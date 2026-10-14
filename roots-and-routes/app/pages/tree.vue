@@ -130,7 +130,14 @@ const importGedcom = () => {
 }
 
 // The whole tree, not just the people matching the search
-const exportGedcom = () => gedcomStore.downloadGedcom()
+const exportGedcom = async () => {
+  try {
+    const result = await gedcomStore.downloadGedcom()
+    if (result.missing.length) window.alert(t('tree.exportMissing', { n: result.missing.length }))
+  } catch (error: any) {
+    window.alert(t('tree.exportFailed', { error: error?.data?.statusMessage || error?.message || '' }))
+  }
+}
 
 // Compute tree statistics
 const treeStats = computed(() => {

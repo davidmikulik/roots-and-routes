@@ -813,18 +813,42 @@ export const useGedcomStore = () => {
     return tree.people.get(id) || null
   }
 
-  // Downloads the whole tree as a GEDCOM file, including edits not saved to the server yet; admin only, like the import
-  const downloadGedcom = (): void => {
+  // Downloads the whole tree, including edits not saved to the server yet; admin only, like the import.
+  // Without attachments a plain .ged file; with attachments a ZIP in the GEDZIP layout (GEDCOM 7): gedcom.ged plus
+  // media/<name>, which is where FILE media/<name> points. Returns the attachments that could not be downloaded.
+  const downloadGedcom = async (): Promise<{ attachments: number; missing: string[] }> => {
     requireEditable()
     const file = state.value.file
-    if (!file || !import.meta.client) return
-    const blob = new Blob([writeGedcom(file)], { type: 'text/plain;charset=utf-8' })
+    if (!file || !import.meta.client) return { attachments: 0, missing: [] }
+    const date = new Date().toISOString().slice(0, 10)
+    const text = writeGedcom(file)
+    const media = [...new Set([...file.multimedia.values()].map(item => item.file).filter(isStoredMedia))]
+    const missing: string[] = []
+    let blob: Blob
+    if (media.length) {
+      const { zipSync, strToU8 } = await import('fflate')
+      const entries: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = { 'gedcom.ged': strToU8(text) }
+      for (const path of media) {
+        try {
+          const content = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+          // Images and PDFs are compressed already
+          entries[path] = [new Uint8Array(await content.arrayBuffer()), { level: 0 }]
+        } catch (error) {
+          console.error(`[GEDCOM] Attachment ${path} could not be exported:`, error)
+          missing.push(path)
+        }
+      }
+      blob = new Blob([zipSync(entries) as Uint8Array<ArrayBuffer>], { type: 'application/zip' })
+    } else {
+      blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    }
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `roots-and-routes-${new Date().toISOString().slice(0, 10)}.ged`
+    link.download = `roots-and-routes-${date}.${media.length ? 'zip' : 'ged'}`
     link.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    return { attachments: media.length - missing.length, missing }
   }
 
   // "Zkopírovat": the server downloads the image or document behind the link and stores a copy in the tree

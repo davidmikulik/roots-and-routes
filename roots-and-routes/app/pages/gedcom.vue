@@ -224,7 +224,14 @@ const cancelMerge = () => {
   duplicateChoices.value = {}
 }
 
-const exportGedcom = () => gedcomStore.downloadGedcom()
+const exportGedcom = async () => {
+  try {
+    const result = await gedcomStore.downloadGedcom()
+    if (result.missing.length) window.alert(t('tree.exportMissing', { n: result.missing.length }))
+  } catch (error: any) {
+    window.alert(t('tree.exportFailed', { error: error?.data?.statusMessage || error?.message || '' }))
+  }
+}
 
 const viewOnMap = () => router.push('/map')
 const viewTree = () => router.push('/tree')

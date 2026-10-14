@@ -1,6 +1,7 @@
 // Replaces the current tree with a backup. The tree being replaced is backed up first, so a restore can be undone.
+// Attachments that are missing in media/ are copied back from the backup.
 import { requireAdminToken } from '~~/server/utils/adminAuth'
-import { createBackup, readBackup, clampBackupCount } from '~~/server/utils/backups'
+import { createBackup, readBackup, clampBackupCount, restoreBackupMedia } from '~~/server/utils/backups'
 import { uploadGedcomFile, saveParsedGedcom } from '~~/server/utils/storage'
 import { parseGedcom } from '~~/utils/gedcom/parser'
 
@@ -16,5 +17,6 @@ export default defineEventHandler(async (event) => {
   await createBackup(clampBackupCount(body.keep))
   await uploadGedcomFile(content, 'current.ged', { overwrite: true, fileId: 'current' })
   await saveParsedGedcom(parsed.file, 'current')
-  return { success: true, people: parsed.file.individuals.size, families: parsed.file.families.size }
+  const attachments = await restoreBackupMedia(body.id, parsed.file)
+  return { success: true, people: parsed.file.individuals.size, families: parsed.file.families.size, attachments }
 })

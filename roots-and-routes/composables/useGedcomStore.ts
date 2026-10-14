@@ -690,6 +690,20 @@ export const useGedcomStore = () => {
     return tree.people.get(id) || null
   }
 
+  // Downloads the whole tree as a GEDCOM file, including edits not saved to the server yet; admin only, like the import
+  const downloadGedcom = (): void => {
+    adminAuth.requireAdmin()
+    const file = state.value.file
+    if (!file || !import.meta.client) return
+    const blob = new Blob([writeGedcom(file)], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `roots-and-routes-${new Date().toISOString().slice(0, 10)}.ged`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const searchPeople = (query: string): AppPerson[] => {
     const allPeople = getAllAppPersons()
     if (!query) return allPeople
@@ -723,6 +737,7 @@ export const useGedcomStore = () => {
     setLoading,
     refreshFromServer,
     saveNow,
+    downloadGedcom,
     
     // Helpers
     getAllAppPersons,

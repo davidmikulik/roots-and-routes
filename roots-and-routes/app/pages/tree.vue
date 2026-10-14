@@ -128,6 +128,9 @@ const importGedcom = () => {
   router.push('/gedcom')
 }
 
+// The whole tree, not just the people matching the search
+const exportGedcom = () => gedcomStore.downloadGedcom()
+
 // Compute tree statistics
 const treeStats = computed(() => {
   if (!familyTree.value) return { generations: 0, people: 0, families: 0 }
@@ -416,6 +419,15 @@ const deletePerson = async (person: AppPerson) => {
 
       <!-- List View -->
       <div v-if="viewMode === 'list'" class="overflow-x-auto">
+        <div v-if="adminAuth.isAdmin.value" class="mb-4 flex justify-end">
+          <button
+            @click="exportGedcom"
+            :title="t('tree.exportHint')"
+            class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
+          >
+            {{ t('tree.export') }}
+          </button>
+        </div>
         <table class="w-full">
           <thead class="border-b">
             <tr :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }">

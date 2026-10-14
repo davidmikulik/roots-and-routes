@@ -4,7 +4,7 @@ import { useGedcomStore } from '~~/composables/useGedcomStore'
 import type { DuplicateChoice } from '~~/composables/useGedcomStore'
 import type { GedcomFile } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
-import { parseGedcom, writeGedcom } from '~~/utils/gedcom/parser'
+import { parseGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations } from '~~/utils/gedcom/locations'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
@@ -224,17 +224,7 @@ const cancelMerge = () => {
   duplicateChoices.value = {}
 }
 
-const exportGedcom = () => {
-  const file = gedcomStore.state.value.file
-  if (!file) return
-  const blob = new Blob([writeGedcom(file)], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'roots-and-routes.ged'
-  link.click()
-  URL.revokeObjectURL(url)
-}
+const exportGedcom = () => gedcomStore.downloadGedcom()
 
 const viewOnMap = () => router.push('/map')
 const viewTree = () => router.push('/tree')
@@ -413,6 +403,7 @@ const viewTree = () => router.push('/tree')
               {{ t('gedcom.result.viewTree') }}
             </button>
             <button
+              v-if="adminAuth.isAdmin.value"
               @click="exportGedcom"
               class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
             >

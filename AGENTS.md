@@ -2,7 +2,7 @@
 
 Genealogická webová aplikace: import GEDCOM, zobrazení předků na mapě (Leaflet) a ve stromu, editace osob, slučování GEDCOM souborů, správa známých lokalit.
 
-- **Produkce:** https://nase-koreny.mikulik.com (Vercel, region `iad1`)
+- **Produkce:** https://nase-koreny.mikulik.com (Vercel, region `iad1`). Vercel nasazuje automaticky po každém pushi do `master` (Git integrace).
 - **Repo:** https://github.com/davidmikulik/roots-and-routes, větev `master`
 - **Jazyk:** UI, commity i komunikace s uživatelem jsou česky; identifikátory v kódu anglicky.
 
@@ -57,6 +57,7 @@ Nuxt 3 (SSR + Nitro, preset `vercel`), Vue 3, TypeScript strict, Tailwind, Leafl
 - **Grafický strom (`/graph`):** rozložení počítá `relatives-tree` (jen pozice a spojnice), karty jsou naše HTML. Balíček má ES moduly bez přípon v importech, proto je v `nuxt.config.ts` `build.transpile: ['relatives-tree']` (bez toho spadne prerender a Node ho nenačte, ve skriptech použij `npx jiti`). Knihovna zobrazí děti *páru*: dítě s jedním známým rodičem by u rodiče s dalším partnerem zmizelo, proto `buildTreeNodes` vymýšlí neznámého partnera (`unknown-…`, není v souboru GEDCOM, na kartě „Osoba není zapsána“). Půlsourozenci se u kořene nezobrazují a druhý partner může být umístěn na okraji skupiny sourozenců. Objekty d3 jsou v proměnných mimo reaktivitu. Plátno sleduje změnu kořene i bez změny pozic (členové jedné rodiny mají stejné rozložení). Při změně `treeGraph.ts` spusť `npm run check:graph -- <get.json>` (stáhni `GET /api/gedcom/get`).
 - **Jména:** `names[].full` je jméno pro zobrazení **bez lomítek** (`Jan Mikulik`). Rozklad řádku GEDCOM `NAME` i zpětný zápis s lomítky (`Jan /Mikulik/`) řeší `utils/gedcom/names.ts` (`parseGedcomName`, `nameToGedcom`), parser i export ho používají. Data uložená před touto opravou se čistí při načtení v `deserializeGedcomFile`. Lomítka do zobrazovaných jmen nikdy neskládej.
 - **Číslo a čas buildu:** `nuxt.config.ts` je při každém buildu (i při startu dev serveru) spočítá do `runtimeConfig.public.build`: `number` je čas buildu v UTC ve tvaru `YYYYMMDD.HHMM`, `commit` je z `VERCEL_GIT_COMMIT_SHA` (na Vercelu) nebo z gitu, `version` z `package.json`. Zobrazuje se v Nastavení → O aplikaci. Čas se vykresluje až v prohlížeči, protože server neví, v jakém časovém pásmu je návštěvník (jinak by Vue hlásilo nesoulad při hydrataci).
+- **Značky na mapě (`assets/css/leaflet.css`):** Leaflet umisťuje značku přes `transform` na prvku `.custom-marker-icon`. Na tento prvek nikdy nedávej `transform` ani `transition` (ani v `:hover`), jinak značka při najetí myší skočí do levého horního rohu mapy a nejde na ni kliknout. Zvětšení a styl patří na vnitřní `div` (`makeIcon`). Totéž platí pro `.marker-cluster`.
 - **Mapa a detail osoby:** klepnutí na značku neotevírá Leaflet popup, ale panel `MapPersonPanel.vue` (na telefonu spodní panel, od `sm` karta vpravo nahoře, protože mapa je vyšší než okno). Vybraná značka se zvýrazní (`makeIcon` + `setIcon`), `revealMarker` posune mapu, aby značku panel nezakrýval, a klepnutí do prázdné mapy nebo Esc detail zavře. Příbuzný v panelu přepne výběr na jeho značku (`goToEvent`, u shluků přes `zoomToShowLayer`). Panel zobrazuje jen události, které prošly filtry mapy (`eventsByPerson`). Značky držíme v `Map` mimo reaktivitu. Mapa je vyšší než okno a na telefonu začíná pod okrajem obrazovky: výběr značky proto stránku doroluje, aby byla mapa vidět celá, a panel se drží viditelné části mapy (CSS proměnné `--panel-top/bottom/max` z `updatePanelInset`).
 - **`useGedcomStore()` volej jen ve stránkách, ne v komponentách.** Každé volání registruje `onMounted`, který znovu stáhne strom ze serveru a přepíše store. V komponentě (např. panel na mapě) to znamená nové stažení při každém zobrazení a mapa pak přestaví všechny značky. Komponentám předávej data přes props.
 - **Navigace:** odkazy jsou jednou v poli `navLinks` v `app/app.vue` a používá je desktopové i mobilní menu (pod 768 px, tlačítko ☰). Nová stránka se přidá jen tam a do `i18n/common.ts`.
@@ -78,7 +79,7 @@ npm run dev          # http://localhost:3000, vyžaduje .env s BLOB_READ_WRITE_T
 npx vue-tsc --noEmit # typecheck (celý projekt má i starší chyby, filtruj změněné soubory)
 npm run build        # nuxt build → .vercel/output; nejlepší rychlé ověření
 npm run lint
-npm run deploy       # vercel --prod (jen na výslovný pokyn uživatele)
+npm run deploy       # vercel --prod; jen když automatický deploy po pushi neproběhl a uživatel ho výslovně vyžádá
 ```
 
 Projekt nemá automatické testy. Změnu ověř buildem, typecheckem změněných souborů, případně ručně v `npm run dev`.
@@ -86,5 +87,5 @@ Projekt nemá automatické testy. Změnu ověř buildem, typecheckem změněnýc
 ## Konvence
 
 - Commit messages: krátké, buď česky, nebo ve tvaru `fix: …` / `improve: …`.
-- Commituj, pushuj a deployuj jen na výslovný pokyn.
+- Commituj a pushuj jen na výslovný pokyn. Push do `master` = nasazení na produkci (Vercel ho spustí sám), proto po pushi ověř, že produkce běží na novém commitu (Nastavení → O aplikaci). Ruční `npm run deploy` jen na výslovný pokyn, když automatický deploy neproběhl. Složka `roots-and-routes/` není propojená přes `vercel link`, takže se CLI zeptá na nastavení projektu: neodpovídej za uživatele a ověř s ním, který projekt vybrat.
 - Sdílenou logiku pro klienta i server dávej do `utils/` (auto-import přes `imports.dirs`). Server-only kód patří do `server/utils/`.

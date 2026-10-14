@@ -19,20 +19,12 @@
 .leaflet-control-zoom-in:hover, .leaflet-control-zoom-out:hover { background-color: var(--gray-50) !important; }
 .dark .leaflet-control-zoom-in:hover, .dark .leaflet-control-zoom-out:hover { background-color: var(--gray-700) !important; }
 
-/* Custom marker icons */
-.custom-marker-icon {
-  width: 32px !important; height: 32px !important; background-color: var(--event-birth) !important;
-  border-radius: 50% !important; display: flex !important; align-items: center !important;
-  justify-content: center !important; font-size: 18px !important; color: white !important;
-  border: 2px solid white !important; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
-  cursor: pointer !important; transition: transform 0.2s ease !important;
-}
-.custom-marker-icon:hover { transform: scale(1.2) !important; }
-
-/* Event type colors */
-.custom-marker-icon.birth, .custom-marker-icon.chr { background-color: var(--event-birth) !important; }
-.custom-marker-icon.death, .custom-marker-icon.buri, .custom-marker-icon.crem { background-color: var(--event-death) !important; }
-.custom-marker-icon.marr, .custom-marker-icon.enga, .custom-marker-icon.div { background-color: var(--event-marriage) !important; }
+/* Custom marker icons: the colored circle is the inner div (see makeIcon in pages/map.vue).
+   Never set transform or transition on .custom-marker-icon itself: Leaflet places markers with a transform on that
+   element, so a hover scale moved the marker to the map's top left corner, away from the pointer. */
+.custom-marker-icon { cursor: pointer !important; }
+.custom-marker-icon > div { transition: transform 0.2s ease; }
+.custom-marker-icon:hover > div { transform: scale(1.2) !important; }
 
 /* Cluster markers */
 .marker-cluster div {

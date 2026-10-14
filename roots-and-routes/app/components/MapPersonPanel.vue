@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // Detail of the person whose marker is selected on the map: years of life, all their events on the map,
 // their family and a link to the graphical tree. Names, dates and places respect the anonymous mode.
-// Placement: a bottom sheet on phones, a card in the top right corner from `sm` up (the map is taller than a typical
-// window, so a card at its bottom edge would be partly out of sight).
-import type { MapEvent } from '~~/types/gedcom'
+// Placement: a bottom sheet on phones, a card in the top right corner from `sm` up. The map page keeps it inside the
+// part of the map that is on screen through the CSS variables --panel-top, --panel-bottom and --panel-max.
+// The file comes as a prop: useGedcomStore() here would reload the tree from the server every time the panel opens.
+import type { GedcomFile, MapEvent } from '~~/types/gedcom'
 import type { MessageKey } from '~~/i18n'
-import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
@@ -13,6 +13,7 @@ import { displayName } from '~~/utils/gedcom/treeGraph'
 import { formatGedcomDate } from '~~/utils/gedcom/dates'
 
 const props = defineProps<{
+  file: GedcomFile | null
   personId: string
   selectedId: string
   /** Events currently shown on the map, grouped by person */
@@ -27,11 +28,10 @@ const emit = defineEmits<{
 
 const { t } = useT()
 const anon = useAnonymize()
-const gedcomStore = useGedcomStore()
 const { settings } = useSettings()
 const locale = computed(() => (settings.value.language === 'cs' ? 'cs-CZ' : 'en-GB'))
 
-const file = computed(() => gedcomStore.state.value.file)
+const file = computed(() => props.file)
 const person = computed(() => file.value?.individuals.get(props.personId))
 
 const year = (text = ''): number => Number(text.match(/\b\d{4}\b/)?.[0]) || Number.POSITIVE_INFINITY
@@ -85,7 +85,7 @@ const avatar = computed(() => {
   <aside
     v-if="person"
     data-map-panel
-    class="absolute bottom-3 left-3 right-3 z-[1100] max-h-[55%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-800 sm:bottom-auto sm:left-auto sm:top-3 sm:max-h-[calc(100%-1.5rem)] sm:w-96"
+    class="absolute bottom-[var(--panel-bottom,0.75rem)] left-3 right-3 z-[1100] max-h-[min(55%,var(--panel-max,100%))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-800 sm:bottom-auto sm:left-auto sm:top-[var(--panel-top,0.75rem)] sm:max-h-[var(--panel-max,calc(100%-1.5rem))] sm:w-96"
     :aria-label="t('map.detail.title')"
   >
     <div class="flex items-start gap-3">

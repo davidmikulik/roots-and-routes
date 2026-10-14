@@ -278,20 +278,56 @@ const revealMarker = async (event: MapEvent) => {
   const right = box.right - container.left + edge
   const top = box.top - container.top - edge
   const bottom = box.bottom - container.top + edge
-  // Candidate shifts ([dx, dy] moves the marker to [x - dx, y - dy]); only those that stay inside the map are allowed
-  const fits = (dx: number, dy: number) => point.x - dx >= edge && point.x - dx <= container.width - edge && point.y - dy >= edge && point.y - dy <= container.height - edge
+  // Only the part of the map that is on screen counts (the map may be partly scrolled out of the window)
+  const minY = Math.max(0, -container.top) + edge
+  const maxY = Math.min(container.height, window.innerHeight - container.top) - edge
+  // Candidate shifts ([dx, dy] moves the marker to [x - dx, y - dy]); only those that stay inside the visible map are allowed
+  const fits = (dx: number, dy: number) => point.x - dx >= edge && point.x - dx <= container.width - edge && point.y - dy >= minY && point.y - dy <= maxY
   const covered = point.x > left && point.x < right && point.y > top && point.y < bottom
   const options = covered
     ? [[0, point.y - top], [point.x - left, 0], [point.x - right, 0], [0, point.y - bottom]]
     : [[0, 0]]
   const clampX = Math.min(0, point.x - edge) + Math.max(0, point.x - (container.width - edge))
-  const clampY = Math.min(0, point.y - edge) + Math.max(0, point.y - (container.height - edge))
+  const clampY = Math.min(0, point.y - minY) + Math.max(0, point.y - maxY)
   const [dx, dy] = options.filter(([x, y]) => fits(x, y)).sort((a, c) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(c[0]) - Math.abs(c[1]))[0]
     ?? [clampX, clampY]
   if (covered || clampX || clampY) map.panBy([covered ? dx : clampX, covered ? dy : clampY])
 }
 
+// The map is taller than the window, and on phones it starts below the fold: the detail panel is kept inside the part
+// of the map that is on screen, otherwise it would open out of sight at the map's bottom (phones) or top (desktop) edge
+const panelInset = ref({ top: 12, bottom: 12, max: 0 })
+const updatePanelInset = () => {
+  const container = mapInstance.value?.getContainer().getBoundingClientRect()
+  if (!container) return
+  const gap = 12
+  const visible = Math.min(container.bottom, window.innerHeight) - Math.max(container.top, 0)
+  panelInset.value = {
+    top: Math.max(0, -container.top) + gap,
+    bottom: Math.max(0, container.bottom - window.innerHeight) + gap,
+    max: Math.max(160, visible - 2 * gap),
+  }
+}
+const panelStyle = computed(() => ({
+  '--panel-top': `${panelInset.value.top}px`,
+  '--panel-bottom': `${panelInset.value.bottom}px`,
+  ...(panelInset.value.max ? { '--panel-max': `${panelInset.value.max}px` } : {}),
+}))
+const onViewportChange = () => {
+  if (selectedEvent.value) updatePanelInset()
+}
+
+// Scrolls the page just enough to show the whole map when it fits in the window, so the panel and the marker both have room
+const scrollMapIntoView = () => {
+  const container = mapInstance.value?.getContainer().getBoundingClientRect()
+  if (!container || container.height > window.innerHeight) return
+  const delta = container.top < 0 ? container.top : Math.max(0, container.bottom - window.innerHeight)
+  if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
+}
+
 const selectEvent = (event: MapEvent, options: { reveal?: boolean } = {}) => {
+  scrollMapIntoView()
+  updatePanelInset()
   const previous = selectedEvent.value
   if (previous && previous.id !== event.id) markers.get(previous.id)?.setIcon(makeIcon(previous, false))
   selectedEvent.value = event
@@ -364,11 +400,15 @@ onMounted(() => {
   })
   window.addEventListener('resize', handleResize)
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('scroll', onViewportChange, { passive: true })
+  window.addEventListener('resize', onViewportChange)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('scroll', onViewportChange)
+  window.removeEventListener('resize', onViewportChange)
   if (mapInstance.value) {
     mapInstance.value.remove()
     mapInstance.value = null
@@ -500,6 +540,8 @@ onUnmounted(() => {
         
         <MapPersonPanel
           v-if="selectedEvent"
+          :style="panelStyle"
+          :file="gedcomStore.state.value.file"
           :person-id="selectedEvent.personId"
           :selected-id="selectedEvent.id"
           :events-by-person="eventsByPerson"

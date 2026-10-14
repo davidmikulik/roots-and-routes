@@ -73,6 +73,9 @@ export interface LinkDraft {
   title: string
   file?: string
   format?: string
+  // The address the copy was downloaded from; changing the address then drops the copy. A file pasted from the
+  // clipboard has none and stays when an address is typed in afterwards.
+  copiedFrom?: string
 }
 
 export interface CopiedMedia {
@@ -83,14 +86,36 @@ export interface CopiedMedia {
   size: number
 }
 
-export const isStoredMedia = (file?: string): file is string => !!file && file.startsWith('media/')
+// Same limit as server/utils/media.ts (Vercel functions accept at most 4.5 MB per request)
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+
+// Re-encodes an image as JPEG, scaling it down until it fits under the upload limit
+const shrinkImage = async (file: Blob): Promise<Blob> => {
+  const bitmap = await createImageBitmap(file)
+  let scale = Math.min(1, 4000 / Math.max(bitmap.width, bitmap.height))
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#fff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const jpeg = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+    if (jpeg && jpeg.size <= MAX_UPLOAD_BYTES) return jpeg
+    scale *= 0.75
+  }
+  return file
+}
+
+export const isStoredMedia =(file?: string): file is string => !!file && file.startsWith('media/')
 
 // The links of a person for the editor and the detail
 export const linksOf = (file: GedcomFile, individual: GedcomIndividual): LinkDraft[] => individual.multimediaLinks
   .map(id => file.multimedia.get(id))
   .filter((media): media is NonNullable<typeof media> => !!media && !!media.file)
   .map(media => isStoredMedia(media.file)
-    ? { id: media.xrefId, url: media.url || '', title: media.title || '', file: media.file, format: media.format }
+    ? { id: media.xrefId, url: media.url || '', title: media.title || '', file: media.file, format: media.format, copiedFrom: media.url }
     : { id: media.xrefId, url: media.file!, title: media.title || '' })
 
 const DATABASE_NAME = 'roots-and-routes'
@@ -569,7 +594,8 @@ export const useGedcomStore = () => {
     for (const link of links) {
       const url = link.url.trim()
       const title = link.title.trim()
-      if (!url || !title) throw new Error(t('tree.links.required'))
+      // A file pasted from the clipboard needs no address
+      if (!title || (!url && !isStoredMedia(link.file))) throw new Error(t('tree.links.required'))
       const id = link.id && file.multimedia.has(link.id) ? link.id : (() => {
         let number = 1
         while (file.multimedia.has(`M${number}`)) number++
@@ -582,7 +608,7 @@ export const useGedcomStore = () => {
         xrefId: id,
         title,
         ...(isStoredMedia(link.file)
-          ? { file: link.file, url, format: link.format }
+          ? { file: link.file, url: url || undefined, format: link.format }
           : { file: url, url: undefined, format: 'url' }),
       })
       ids.push(id)
@@ -808,6 +834,21 @@ export const useGedcomStore = () => {
     return response.data
   }
 
+  // A file pasted from the clipboard. Vercel accepts at most 4.5 MB per request: a bigger image is re-encoded as JPEG
+  // (smaller if needed), a bigger document is refused.
+  const uploadMediaToTree = async (file: Blob, name: string): Promise<CopiedMedia> => {
+    requireEditable()
+    const body = file.size > MAX_UPLOAD_BYTES && file.type.startsWith('image/') ? await shrinkImage(file) : file
+    if (body.size > MAX_UPLOAD_BYTES) throw new Error(t('tree.links.tooLarge'))
+    const fileName = body === file ? name : name.replace(/\.[^.]+$/, '') + '.jpg'
+    const response = await $fetch<{ data: CopiedMedia }>(`/api/media/upload?name=${encodeURIComponent(fileName)}`, {
+      method: 'POST',
+      headers: { ...adminAuth.authHeaders(), 'content-type': body.type || 'application/octet-stream' },
+      body,
+    })
+    return response.data
+  }
+
   // Copies are private (admin token), so a plain link cannot open them: fetch with the token and open the result.
   // The window is opened before the request, otherwise the browser blocks it as a popup.
   const openStoredMedia = async (path: string): Promise<void> => {
@@ -866,6 +907,7 @@ export const useGedcomStore = () => {
     saveNow,
     downloadGedcom,
     copyLinkToTree,
+    uploadMediaToTree,
     openStoredMedia,
     
     // Helpers

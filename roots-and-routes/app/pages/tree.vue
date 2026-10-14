@@ -239,9 +239,12 @@ const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
 const addLink = () => personForm.value.links.push({ url: '', title: '' })
 const removeLink = (index: number) => personForm.value.links.splice(index, 1)
 // A new address no longer matches the stored copy
+// A copy downloaded from the address no longer matches a new address; a pasted file stays
 const changeLinkUrl = (link: LinkDraft) => {
+  if (link.copiedFrom === undefined || link.url.trim() === link.copiedFrom) return
   link.file = undefined
   link.format = undefined
+  link.copiedFrom = undefined
 }
 const copyingLinks = ref(new Set<LinkDraft>())
 const copiedSizes = ref(new Map<LinkDraft, number>())
@@ -253,6 +256,7 @@ const copyLink = async (link: LinkDraft) => {
     const copied = await gedcomStore.copyLinkToTree(link.url.trim())
     link.file = copied.file
     link.format = copied.format
+    link.copiedFrom = link.url.trim()
     copiedSizes.value = new Map(copiedSizes.value).set(link, copied.size)
   } catch (error) {
     window.alert(t('tree.links.copyFailed', { error: errorText(error) }))
@@ -261,6 +265,42 @@ const copyLink = async (link: LinkDraft) => {
     next.delete(link)
     copyingLinks.value = next
   }
+}
+
+// From the clipboard: the button reads an image (browsers give no other files to the clipboard API);
+// Ctrl+V in the link row also takes a document copied in a file manager
+const uploadToLink = async (link: LinkDraft, file: Blob, name: string) => {
+  copyingLinks.value = new Set(copyingLinks.value).add(link)
+  try {
+    const stored = await gedcomStore.uploadMediaToTree(file, name)
+    link.file = stored.file
+    link.format = stored.format
+    link.copiedFrom = undefined
+    copiedSizes.value = new Map(copiedSizes.value).set(link, stored.size)
+  } catch (error) {
+    window.alert(t('tree.links.copyFailed', { error: errorText(error) }))
+  } finally {
+    const next = new Set(copyingLinks.value)
+    next.delete(link)
+    copyingLinks.value = next
+  }
+}
+const pasteFromClipboard = async (link: LinkDraft) => {
+  try {
+    for (const item of await navigator.clipboard.read()) {
+      const type = item.types.find(candidate => candidate.startsWith('image/'))
+      if (type) return await uploadToLink(link, await item.getType(type), `clipboard.${type.split('/')[1]}`)
+    }
+  } catch (error) {
+    console.warn('[TREE] Clipboard read failed:', error)
+  }
+  window.alert(t('tree.links.clipboardEmpty'))
+}
+const pasteIntoLink = (event: ClipboardEvent, link: LinkDraft) => {
+  const file = event.clipboardData?.files?.[0]
+  if (!file) return
+  event.preventDefault()
+  void uploadToLink(link, file, file.name || 'clipboard')
 }
 const openCopy = async (path: string) => {
   try {
@@ -763,12 +803,12 @@ const deletePerson = async (person: AppPerson) => {
               <legend class="font-medium">{{ t('tree.links.title') }}</legend>
               <button type="button" @click="addLink" class="text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.links.add') }}</button>
             </div>
-            <div v-for="(link, index) in personForm.links" :key="index" data-link-row class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
+            <div v-for="(link, index) in personForm.links" :key="index" data-link-row @paste="pasteIntoLink($event, link)" class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
               <input
                 v-model="link.url"
                 @input="changeLinkUrl(link)"
                 inputmode="url"
-                required
+                :required="!isStoredMedia(link.file)"
                 class="rounded border px-3 py-2 bg-transparent"
                 :placeholder="t('tree.links.url')"
                 :aria-label="t('tree.links.url')"
@@ -791,6 +831,14 @@ const deletePerson = async (person: AppPerson) => {
                     :disabled="!isWebAddress(link.url) || copyingLinks.has(link)"
                     class="px-3 py-1 rounded border disabled:opacity-50"
                   >{{ copyingLinks.has(link) ? t('tree.links.copying') : t('tree.links.copy') }}</button>
+                </HoverTip>
+                <HoverTip :text="t('tree.links.pasteHint')">
+                  <button
+                    type="button"
+                    @click="pasteFromClipboard(link)"
+                    :disabled="copyingLinks.has(link)"
+                    class="px-3 py-1 rounded border disabled:opacity-50"
+                  >{{ t('tree.links.paste') }}</button>
                 </HoverTip>
               </div>
             </div>

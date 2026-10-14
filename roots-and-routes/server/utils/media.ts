@@ -91,21 +91,40 @@ const readLimited = async (response: Response): Promise<Buffer> => {
   return Buffer.concat(chunks)
 }
 
-export async function copyRemoteMedia(rawUrl: string, token: string): Promise<CopiedMedia> {
-  const response = await download(rawUrl)
-  const extension = new URL(response.url || rawUrl).pathname.split('.').pop()?.toLowerCase() || ''
-  let contentType = (response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase()
-  // Servers often send files as a generic binary stream: then the extension decides
+// The allowed type from a Content-Type header; a generic binary stream (common for downloads and pasted files)
+// is decided by the file extension
+const mediaType = (rawContentType: string, filename: string) => {
+  let contentType = rawContentType.split(';')[0]!.trim().toLowerCase()
+  const extension = filename.split('.').pop()?.toLowerCase() || ''
   if (!TYPES[contentType] && ['application/octet-stream', 'binary/octet-stream', ''].includes(contentType)) contentType = BY_EXTENSION[extension] || contentType
   const type = TYPES[contentType]
-  if (!type) throw createError({ statusCode: 415, statusMessage: `The link does not lead to an image or a document (${contentType || 'unknown type'})` })
-  const body = await readLimited(response)
-  const file = `media/${randomUUID()}.${type.ext}`
-  await put(`uploads/gedcom/${file}`, body, { access: 'private', token, contentType, addRandomSuffix: false })
-  return { file, format: type.ext, kind: type.kind, contentType, size: body.length }
+  return type ? { ...type, contentType } : { contentType }
 }
 
-// Only names made by copyRemoteMedia, so the request cannot read other blobs
+const storeMedia = async (body: Buffer, type: { ext: string; kind: MediaKind; contentType: string }, token: string): Promise<CopiedMedia> => {
+  const file = `media/${randomUUID()}.${type.ext}`
+  await put(`uploads/gedcom/${file}`, body, { access: 'private', token, contentType: type.contentType, addRandomSuffix: false })
+  return { file, format: type.ext, kind: type.kind, contentType: type.contentType, size: body.length }
+}
+
+export async function copyRemoteMedia(rawUrl: string, token: string): Promise<CopiedMedia> {
+  const response = await download(rawUrl)
+  const type = mediaType(response.headers.get('content-type') || '', new URL(response.url || rawUrl).pathname)
+  if (!('ext' in type)) throw createError({ statusCode: 415, statusMessage: `The link does not lead to an image or a document (${type.contentType || 'unknown type'})` })
+  return storeMedia(await readLimited(response), type, token)
+}
+
+// A file pasted from the clipboard. Vercel functions accept at most 4.5 MB per request; the client keeps under it
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+export async function storeUploadedMedia(body: Buffer, rawContentType: string, filename: string, token: string): Promise<CopiedMedia> {
+  if (!body.length) throw createError({ statusCode: 400, statusMessage: 'The file is empty' })
+  if (body.length > MAX_UPLOAD_BYTES) throw createError({ statusCode: 413, statusMessage: 'The file is larger than 4 MB' })
+  const type = mediaType(rawContentType, filename)
+  if (!('ext' in type)) throw createError({ statusCode: 415, statusMessage: `The file is not an image or a document (${type.contentType || 'unknown type'})` })
+  return storeMedia(body, type, token)
+}
+
+// Only names made by storeMedia, so the request cannot read other blobs
 export const isMediaName = (name: string): boolean => /^[0-9a-f-]{36}\.[a-z]{3,4}$/.test(name)
 
 export async function readMedia(name: string, token: string) {

@@ -197,3 +197,27 @@ export function syncPersonLocations(file: GedcomFile, events: (GedcomEvent | und
 // "place|lat,lng" of an event, to tell coordinates entered in an edit from those that were there before
 export const locationStamp = (place: string, coordinates?: readonly unknown[]): string =>
   `${normalizeLocationName(place)}|${coordinates ? `${Number(coordinates[0]).toFixed(6)},${Number(coordinates[1]).toFixed(6)}` : ''}`
+
+// Catalog → tree: every event of a place with coordinates in the catalog gets them (the catalog wins where they
+// differ). Returns how many events changed: filled (had none) and overwritten (had different ones).
+export function applyCatalogToTree(file: GedcomFile, catalog: KnownLocation[]): { filled: number; overwritten: number } {
+  const lookup = new Map(catalog.filter(location => location.latitude !== null && location.longitude !== null)
+    .map(location => [normalizeLocationName(location.name), [location.latitude!, location.longitude!] as [number, number]]))
+  let filled = 0
+  let overwritten = 0
+  const apply = (event?: GedcomEvent) => {
+    const coordinates = event?.place ? lookup.get(normalizeLocationName(event.place)) : undefined
+    if (!event || !coordinates) return
+    if (!event.coordinates) filled++
+    else if (!sameCoordinates(event.coordinates as [number, number], coordinates)) overwritten++
+    else return
+    event.coordinates = [coordinates[0], coordinates[1]]
+  }
+  for (const individual of file.individuals.values()) applyIndividualLocations(individual, apply)
+  for (const family of file.families.values()) {
+    apply(family.marriage)
+    apply(family.divorce)
+    for (const event of family.engagements || []) apply(event)
+  }
+  return { filled, overwritten }
+}

@@ -2,7 +2,7 @@ import { computed, effectScope, onMounted, watch } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
-import { applyKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
+import { applyCatalogToTree, applyKnownLocations, learnKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
 import { parseGedcomName } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
@@ -390,6 +390,33 @@ export const useGedcomStore = () => {
       dirty: state.value.dirty,
       anonymized: state.value.anonymized,
     }
+  }
+
+  // Two-way sync of the known locations and the tree (button on Admin → Known locations):
+  // tree → catalog: places the catalog lacks are added, entries without coordinates take them from the tree;
+  // catalog → tree: events get the catalog's coordinates (the catalog wins where they differ).
+  // Saves the catalog and, when something changed, the tree; returns the new catalog and the counts.
+  const syncKnownLocations = async (catalog: KnownLocation[]) => {
+    requireEditable()
+    const file = state.value.file
+    if (!file) throw new Error(t('admin.noTree'))
+    const learned = learnKnownLocations(catalog, file)
+    const tree = applyCatalogToTree(file, learned.catalog)
+    await $fetch('/api/admin/locations', { method: 'PUT', headers: adminAuth.authHeaders(), body: { locations: learned.catalog } })
+    if (tree.filled || tree.overwritten) {
+      const previousResult = state.value.parseResult
+      setFile(file, {
+        file,
+        warnings: previousResult?.warnings || [],
+        errors: previousResult?.errors || [],
+        stats: previousResult?.stats || { linesProcessed: 0, recordsCreated: file.individuals.size + file.families.size, parsingTime: 0 },
+      })
+      if (import.meta.client) {
+        await saveContent(writeGedcom(file))
+        await persist(file)
+      }
+    }
+    return { catalog: learned.catalog, added: learned.added, updated: learned.updated, ...tree }
   }
 
   const refreshLocationCoordinates = async (knownLocations: KnownLocation[]): Promise<number> => {
@@ -959,6 +986,7 @@ export const useGedcomStore = () => {
     setFile,
     parseFile,
     refreshLocationCoordinates,
+    syncKnownLocations,
     findDuplicatePeople,
     mergeFile,
     savePerson,

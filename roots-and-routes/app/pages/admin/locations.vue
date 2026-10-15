@@ -79,6 +79,24 @@ const addLocation = () => {
   errorMessage.value = ''
 }
 
+// Two-way sync with the tree (includes edits in the table that are not saved yet)
+const isSyncing = ref(false)
+const syncWithTree = async () => {
+  if (!window.confirm(t('locations.sync.confirm'))) return
+  isSyncing.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const result = await gedcomStore.syncKnownLocations(locations.value)
+    locations.value = result.catalog.map(location => ({ ...location })).sort((first, second) => first.name.localeCompare(second.name))
+    successMessage.value = t('locations.sync.done', { added: result.added, updated: result.updated, filled: result.filled, overwritten: result.overwritten })
+  } catch (error: any) {
+    errorMessage.value = error.data?.statusMessage || error.message || t('locations.error.save')
+  } finally {
+    isSyncing.value = false
+  }
+}
+
 const saveLocations = async () => {
   isSaving.value = true
   errorMessage.value = ''
@@ -287,6 +305,12 @@ const handleImport = async (event: Event) => {
             <button @click="saveLocations" :disabled="isSaving" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">
               {{ isSaving ? t('locations.saving') : t('locations.save') }}
             </button>
+            <button
+              @click="syncWithTree"
+              :disabled="isSyncing || !gedcomStore.hasData.value"
+              class="rounded border border-primary-600 px-4 py-2 font-medium text-primary-700 dark:text-primary-300 disabled:opacity-60"
+              :title="t('locations.sync.title')"
+            >{{ isSyncing ? t('locations.sync.running') : t('locations.sync.button') }}</button>
             <button @click="triggerFileImport" :disabled="isImporting" class="rounded border border-gray-300 dark:border-gray-600 px-4 py-2 font-medium disabled:opacity-60" :title="t('locations.importTitle')">
               {{ isImporting ? t('locations.importing') : t('locations.import') }}
             </button>

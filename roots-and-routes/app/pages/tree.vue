@@ -731,16 +731,23 @@ const deletePerson = async (person: AppPerson) => {
               </div>
               <ul class="space-y-1 text-sm">
                 <li v-for="link in selectedLinks" :key="link.id">
+                  <!-- A copy made from a web address keeps the address: description → address, then a link to the copy.
+                       A file pasted from the clipboard has no address: the description links to the copy. -->
                   <template v-if="isStoredMedia(link.file)">
+                    <template v-if="isWebAddress(link.url)">
+                      <a :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
+                      <span class="opacity-60"> · </span>
+                    </template>
                     <a
                       v-if="attachmentUrls.get(link.file)"
                       :href="attachmentUrls.get(link.file)"
                       :download="attachmentDownloadName(link)"
                       target="_blank"
                       rel="noopener"
+                      data-attachment
                       class="text-primary-700 dark:text-primary-300 underline break-all"
-                    >{{ link.title }}</a>
-                    <span v-else class="text-primary-700 dark:text-primary-300 underline break-all opacity-60" :title="t('tree.links.loading')">{{ link.title }}</span>
+                    >{{ isWebAddress(link.url) ? t('tree.links.attachment') : link.title }}</a>
+                    <span v-else class="text-primary-700 dark:text-primary-300 underline break-all opacity-60" :title="t('tree.links.loading')">{{ isWebAddress(link.url) ? t('tree.links.attachment') : link.title }}</span>
                   </template>
                   <a v-else-if="isWebAddress(link.url)" :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
                   <span v-else class="break-all">{{ link.title }} ({{ link.url }})</span>

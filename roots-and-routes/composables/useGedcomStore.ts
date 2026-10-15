@@ -873,6 +873,12 @@ export const useGedcomStore = () => {
     return response.data
   }
 
+  // A stored attachment as a Blob (with its content type), for links in the person detail
+  const fetchStoredMedia = async (path: string): Promise<Blob> => {
+    adminAuth.requireAdmin()
+    return await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+  }
+
   // Copies are private (admin token), so a plain link cannot open them: fetch with the token and open the result.
   // The window is opened before the request, otherwise the browser blocks it as a popup.
   const openStoredMedia = async (path: string): Promise<void> => {
@@ -933,6 +939,7 @@ export const useGedcomStore = () => {
     copyLinkToTree,
     uploadMediaToTree,
     openStoredMedia,
+    fetchStoredMedia,
     
     // Helpers
     getAllAppPersons,

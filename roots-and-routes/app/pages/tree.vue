@@ -324,6 +324,33 @@ const selectedLinks = computed(() => {
   return file && individual ? linksOf(file, individual) : []
 })
 
+// Attachments in the detail are ordinary links like the web links: they are private (admin token), so the files are
+// fetched when the detail shows them and linked as blob: URLs. Office documents get a file name and download.
+const attachmentUrls = ref(new Map<string, string>())
+const OPENS_IN_BROWSER = /\.(jpg|png|gif|webp|pdf|txt)$/
+const attachmentDownloadName = (link: LinkDraft): string | undefined =>
+  OPENS_IN_BROWSER.test(link.file || '') ? undefined : `${link.title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'document'}.${link.format || 'bin'}`
+const releaseAttachmentUrls = () => {
+  for (const url of attachmentUrls.value.values()) URL.revokeObjectURL(url)
+  attachmentUrls.value = new Map()
+}
+watch(() => selectedLinks.value.map(link => link.file).filter(isStoredMedia).join('|'), async (key) => {
+  releaseAttachmentUrls()
+  if (!key || !adminAuth.isAdmin.value) return
+  const urls = new Map<string, string>()
+  await Promise.all(key.split('|').map(async (path) => {
+    try {
+      urls.set(path, URL.createObjectURL(await gedcomStore.fetchStoredMedia(path)))
+    } catch (error) {
+      console.error(`[TREE] Attachment ${path} could not be loaded:`, error)
+    }
+  }))
+  // The detail may have moved on to another person meanwhile
+  if (key === selectedLinks.value.map(link => link.file).filter(isStoredMedia).join('|')) attachmentUrls.value = urls
+  else for (const url of urls.values()) URL.revokeObjectURL(url)
+})
+onUnmounted(releaseAttachmentUrls)
+
 // Pasting "lat, lng" into either coordinate field fills both fields
 const pasteCoordinates = (event: ClipboardEvent, target: Record<string, any>, latitudeKey: string, longitudeKey: string) => {
   const pair = parseCoordinatePair(event.clipboardData?.getData('text') || '')
@@ -704,7 +731,17 @@ const deletePerson = async (person: AppPerson) => {
               </div>
               <ul class="space-y-1 text-sm">
                 <li v-for="link in selectedLinks" :key="link.id">
-                  <button v-if="isStoredMedia(link.file)" type="button" @click="openCopy(link.file)" class="text-primary-700 dark:text-primary-300 underline text-left">📎 {{ link.title }}</button>
+                  <template v-if="isStoredMedia(link.file)">
+                    <a
+                      v-if="attachmentUrls.get(link.file)"
+                      :href="attachmentUrls.get(link.file)"
+                      :download="attachmentDownloadName(link)"
+                      target="_blank"
+                      rel="noopener"
+                      class="text-primary-700 dark:text-primary-300 underline break-all"
+                    >{{ link.title }}</a>
+                    <span v-else class="text-primary-700 dark:text-primary-300 underline break-all opacity-60" :title="t('tree.links.loading')">{{ link.title }}</span>
+                  </template>
                   <a v-else-if="isWebAddress(link.url)" :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
                   <span v-else class="break-all">{{ link.title }} ({{ link.url }})</span>
                 </li>

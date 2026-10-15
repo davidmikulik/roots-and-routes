@@ -1,6 +1,6 @@
 // GEDCOM Import API Endpoint
 import { parseGedcom } from '~~/utils/gedcom/parser'
-import { applyKnownLocations, getUniqueGedcomLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
+import { applyKnownLocations, getPlaceCoordinates, getUniqueGedcomLocations, learnKnownLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
 import { validateFileSize, isGedcomFile, saveParsedGedcom, uploadGedcomFile } from '~~/server/utils/storage'
 import { createBackup, clampBackupCount } from '~~/server/utils/backups'
 import { loadKnownLocations, saveKnownLocations } from '~~/server/utils/locationStorage'
@@ -37,19 +37,14 @@ export default defineEventHandler(async (event) => {
     importStage = 'loading known locations from Blob'
     const knownLocations = await loadKnownLocations()
     const matchedLocations = applyKnownLocations(parseResult.file, knownLocations)
-    const matchedNames = new Set(matchedLocations.map(location => normalizeLocationName(location.name)))
-    const unresolvedLocations = uniqueLocations.filter(location => !matchedNames.has(normalizeLocationName(location)))
-    const locationCatalog = new Map(knownLocations.map(location => [normalizeLocationName(location.name), location]))
-    let addedLocations = 0
-    for (const location of unresolvedLocations) {
-      const key = normalizeLocationName(location)
-      if (locationCatalog.has(key)) continue
-      locationCatalog.set(key, { name: location, latitude: null, longitude: null })
-      addedLocations++
-    }
-    if (addedLocations > 0) {
+    // The catalog learns the file's places, with the file's coordinates where it has them
+    const learned = learnKnownLocations(knownLocations, parseResult.file)
+    const placeCoordinates = getPlaceCoordinates(parseResult.file)
+    const unresolvedLocations = uniqueLocations.filter(location => !placeCoordinates.get(normalizeLocationName(location))?.coordinates)
+    const addedLocations = learned.added
+    if (learned.added > 0 || learned.updated > 0) {
       importStage = 'saving newly discovered locations to private Blob catalog'
-      await saveKnownLocations([...locationCatalog.values()])
+      await saveKnownLocations(learned.catalog)
     }
     
     // Use a fixed file ID for single-user mode
@@ -74,7 +69,7 @@ export default defineEventHandler(async (event) => {
       data: {
         file: { id: fixedFileId, name: uploadedFile?.name || filename, path: uploadedFile?.path },
         backupId,
-        locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations, added: addedLocations },
+        locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations, added: addedLocations, updated: learned.updated },
       },
       timestamp: new Date().toISOString(),
     }

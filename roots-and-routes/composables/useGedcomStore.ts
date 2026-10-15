@@ -2,7 +2,7 @@ import { computed, effectScope, onMounted, watch } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
-import { applyKnownLocations } from '~~/utils/gedcom/locations'
+import { applyKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
 import { parseGedcomName } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
@@ -256,12 +256,22 @@ const createEvent = (type: GedcomEventType, date: string, place: string, latitud
     : undefined
 }
 
+// Events of a person including those of their partnerships (marriage, divorce, engagements)
+const personEvents = (file: GedcomFile, person: GedcomIndividual): (GedcomEvent | undefined)[] => [
+  person.birth, person.baptism, person.christening, person.death, person.burial, person.cremation, ...person.events,
+  ...person.familiesAsSpouse.map(id => file.families.get(id)).flatMap(family => [family?.marriage, family?.divorce, ...(family?.engagements || [])]),
+]
+
+export interface LocationSyncResult { added: number; updated: number; filled: number; propagated: number; error: string }
+
 // Shared by every useGedcomStore() call
 let latestRequest = 0
 let authWatcher: ReturnType<typeof effectScope> | null = null
 
 export const useGedcomStore = () => {
   const state = useState<GedcomState>('gedcom-store', createEmptyState)
+  // What the last person edit did with the known locations (shown after saving)
+  const lastLocationSync = useState<LocationSyncResult | null>('gedcom-location-sync', () => null)
   const adminAuth = useAdminAuth()
   const appSettings = useSettings()
   const { t } = useT()
@@ -620,6 +630,23 @@ export const useGedcomStore = () => {
     return ids
   }
 
+  // After a person was edited: the catalog of known locations (/api/admin/locations) and the tree are synced, see
+  // syncPersonLocations. A failure does not stop saving the person; it is logged and kept in lastLocationSync.
+  const syncLocationsAfterEdit = async (file: GedcomFile, events: (GedcomEvent | undefined)[], before: Set<string>): Promise<void> => {
+    try {
+      const { locations } = await $fetch<{ locations: KnownLocation[] }>('/api/admin/locations', { headers: adminAuth.authHeaders() })
+      const result = syncPersonLocations(file, events, locations, before)
+      if (result.added || result.updated) {
+        await $fetch('/api/admin/locations', { method: 'PUT', headers: adminAuth.authHeaders(), body: { locations: result.catalog } })
+      }
+      console.log(`[GEDCOM] Known locations: ${result.added} added, ${result.updated} updated, ${result.filled} filled, ${result.propagated} other events updated`)
+      lastLocationSync.value = { added: result.added, updated: result.updated, filled: result.filled, propagated: result.propagated, error: '' }
+    } catch (error: any) {
+      console.error('[GEDCOM] Known locations could not be synced:', error)
+      lastLocationSync.value = { added: 0, updated: 0, filled: 0, propagated: 0, error: error?.data?.statusMessage || error?.message || 'error' }
+    }
+  }
+
   const savePerson = async (draft: IndividualDraft): Promise<string> => {
     requireEditable()
     const file = state.value.file
@@ -630,6 +657,8 @@ export const useGedcomStore = () => {
       return `I${number}`
     })()
     const existing = file.individuals.get(xrefId)
+    // Places and coordinates of the person before the edit, to tell coordinates entered now from those already there
+    const locationsBefore = new Set(existing ? personEvents(file, existing).filter(event => event?.place).map(event => locationStamp(event!.place!, event!.coordinates)) : [])
     // "Jan /Novák/" is read like a GEDCOM name; otherwise the last word is taken as the surname
     const typedName = draft.fullName.trim()
     const words = typedName.split(/\s+/)
@@ -719,6 +748,9 @@ export const useGedcomStore = () => {
         if (person && !person.familiesAsSpouse.includes(family.xrefId)) person.familiesAsSpouse.push(family.xrefId)
       }
     }
+
+    // Known locations: fill coordinates from the catalog, add new places, pass changed coordinates on
+    if (import.meta.client) await syncLocationsAfterEdit(file, personEvents(file, individual), locationsBefore)
 
     file.metadata.totalIndividuals = file.individuals.size
     file.metadata.totalFamilies = file.families.size
@@ -916,6 +948,7 @@ export const useGedcomStore = () => {
   return {
     // State
     state,
+    lastLocationSync,
     individuals,
     families,
     totalIndividuals,

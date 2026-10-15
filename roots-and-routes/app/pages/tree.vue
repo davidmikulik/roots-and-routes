@@ -377,6 +377,10 @@ const savePerson = async () => {
     const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
     if (savedPerson) selectPerson(savedPerson)
     editorOpen.value = false
+    // Changed coordinates were passed on to other people with the same place, or the catalog could not be updated
+    const sync = gedcomStore.lastLocationSync.value
+    if (sync?.error) window.alert(t('tree.locations.syncFailed', { error: sync.error }))
+    else if (sync?.propagated) window.alert(t('tree.locations.propagated', { n: sync.propagated }))
   } catch (error) {
     window.alert(t('tree.savingFailed', { error: errorText(error) }))
   }

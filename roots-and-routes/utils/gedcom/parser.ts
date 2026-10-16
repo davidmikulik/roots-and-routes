@@ -1,6 +1,7 @@
 // Custom GEDCOM Parser - Complete implementation
 import type { LatLngTuple as LngLat } from 'leaflet'
 import { parseGedcomName, nameToGedcom } from './names'
+import { EVENT_TYPES, type ExtraTag } from './eventTypes'
 import type {
   GedcomFile, GedcomLine, GedcomIndividual, GedcomFamily, GedcomName,
   GedcomEvent, GedcomDate, GedcomSource, GedcomSourceCitation, GedcomRepository,
@@ -16,12 +17,6 @@ const CZECH_MONTHS: Record<string, number> = { LEDEN: 0, ÚNOR: 1, BŘEZEN: 2, D
 const RECORD_TAGS = ['INDI', 'FAM', 'SOUR', 'REPO', 'NOTE', 'OBJE', 'SUBM', 'HEAD', 'TRLR']
 const normalizeXref = (value: string): string => value.replace(/^@|@$/g, '')
 
-// Event type mapping
-const EVENT_TYPES: GedcomEventType[] = [
-  'BIRT', 'CHR', 'BAPM', 'DEAT', 'BURI', 'CREM',
-  'MARR', 'DIV', 'ENGA', 'ADOP', 'CENS', 'RESI',
-  'OCCU', 'EDUC', 'RETI', 'EMIG', 'IMMI', 'MILI', 'RELI', 'EVEN', 'FACT'
-]
 
 // Color mapping for event types
 const EVENT_COLORS: Record<GedcomEventType, string> = {
@@ -51,6 +46,8 @@ class GedcomParser {
   private lines: GedcomLine[] = []
   private options: GedcomParseOptions
   private currentIndividualEvent: GedcomEvent | null = null
+  // Inside an unknown level-1 tag of a person (e.g. CHAN with its DATE): its sub-lines are skipped
+  private inUnknownIndividualTag = false
   private currentFamilyEvent: GedcomEvent | null = null
   
   constructor(options: GedcomParseOptions = {}) {
@@ -301,8 +298,10 @@ class GedcomParser {
       this.processEventDetail(line, this.currentIndividualEvent)
       return
     }
+    if (line.level > 1 && this.inUnknownIndividualTag) return
 
     this.currentIndividualEvent = null
+    this.inUnknownIndividualTag = false
     
     switch (tag) {
       case 'NAME':
@@ -341,9 +340,10 @@ class GedcomParser {
           else individual.events.push(event)
           this.currentIndividualEvent = event
         } else if (line.level === 1) {
-          const event = this.createEvent(tag as GedcomEventType, value)
-          individual.events.push(event)
-          this.currentIndividualEvent = event
+          // Not an event (MyHeritage writes _UPD, _UID and RIN for every person): kept as it is and written back
+          const extraTags: ExtraTag[] = individual.userData.extraTags ||= []
+          extraTags.push({ tag: line.tag, value })
+          this.inUnknownIndividualTag = true
         } else {
           if (!individual.attributes[tag]) individual.attributes[tag] = []
           individual.attributes[tag].push(value)
@@ -528,12 +528,13 @@ class GedcomParser {
     return parseGedcomName(nameString)
   }
 
+  // The value on the event line is not a date: "Y" for an event that happened, or the descriptor of an attribute
+  // ("1 OCCU Programmer"); the date comes in a DATE sub-line
   private createEvent(type: GedcomEventType, value: string): GedcomEvent {
     return {
       type,
-      date: this.parseDate(value),
       place: '',
-      description: value
+      description: value && value !== 'Y' ? value : '',
     }
   }
 
@@ -838,6 +839,11 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
       lines.push(`1 NOTE ${note}`)
     }
     
+    // Tags that are not events (MyHeritage's _UPD, _UID, RIN, …), unchanged
+    for (const extra of (individual.userData?.extraTags || []) as ExtraTag[]) {
+      lines.push(extra.value ? `1 ${extra.tag} ${extra.value}` : `1 ${extra.tag}`)
+    }
+
     // Sources
     for (const citation of individual.sourceCitations) {
       lines.push(`1 SOUR @${citation.xref.replace(/@/g, '')}@`)

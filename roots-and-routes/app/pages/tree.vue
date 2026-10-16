@@ -837,9 +837,18 @@ const deletePerson = async (person: AppPerson) => {
           <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div class="flex items-center justify-between mb-3">
               <legend class="font-medium">{{ t('tree.field.otherEvents') }}</legend>
-              <button type="button" @click="addEvent" class="text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.field.addEvent') }}</button>
             </div>
-            <div v-for="(event, index) in personForm.events" :key="index" class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p v-if="!personForm.events.length" class="text-sm opacity-60 mb-3">{{ t('tree.field.noEvents') }}</p>
+            <div v-for="(event, index) in personForm.events" :key="index" data-event-row class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
+              <div class="sm:col-span-2 flex items-center justify-between">
+                <span class="text-sm font-medium opacity-70">{{ t('tree.field.eventNumber', { n: index + 1 }) }}</span>
+                <button
+                  type="button"
+                  @click="removeEvent(index)"
+                  class="text-sm text-red-700 dark:text-red-300 underline"
+                  :aria-label="t('tree.field.removeEvent', { n: index + 1 })"
+                >{{ t('tree.field.removeEventButton') }}</button>
+              </div>
               <select v-model="event.type" class="rounded border px-3 py-2 bg-transparent">
                 <option v-for="type in eventTypeOptions" :key="type" :value="type">{{ eventLabel(type) }}</option>
               </select>
@@ -847,11 +856,9 @@ const deletePerson = async (person: AppPerson) => {
               <input v-model="event.place" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.place')">
               <input v-model="event.description" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.description')">
               <input v-model="event.latitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.latitude')">
-              <div class="flex gap-2">
-                <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.longitude')">
-                <button type="button" @click="removeEvent(index)" class="px-3 text-red-600" :aria-label="t('tree.field.removeEvent', { n: index + 1 })">&times;</button>
-              </div>
+              <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.longitude')">
             </div>
+            <button type="button" @click="addEvent" class="mt-3 text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.field.addEvent') }}</button>
           </fieldset>
           <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div class="flex items-center justify-between mb-3">

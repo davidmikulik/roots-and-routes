@@ -1,5 +1,6 @@
 import { parseGedcomName } from './names'
-import type { GedcomFile, GedcomIndividual, GedcomFamily, GedcomSource, GedcomRepository, GedcomMultimedia, GedcomNote, GedcomMetadata, GedcomLine } from '~~/types/gedcom'
+import { EVENT_TYPES, type ExtraTag } from './eventTypes'
+import type { GedcomEvent, GedcomFile, GedcomIndividual, GedcomFamily, GedcomSource, GedcomRepository, GedcomMultimedia, GedcomNote, GedcomMetadata, GedcomLine } from '~~/types/gedcom'
 
 // Maps are not serializable by JSON.stringify (they become {}), so GedcomFile
 // must be converted to entry arrays whenever it crosses JSON (Blob storage, API).
@@ -75,6 +76,36 @@ const cleanNames = (individuals: Map<string, GedcomIndividual>): Map<string, Ged
   return individuals
 }
 
+// Data imported before the parser was fixed has every unknown level-1 tag of a person as an "event" (MyHeritage's
+// _UPD, _UID, RIN with their value in the description): move them back to userData.extraTags
+const cleanFakeEvents = (individuals: Map<string, GedcomIndividual>): Map<string, GedcomIndividual> => {
+  for (const person of individuals.values()) {
+    const fake = (person.events ?? []).filter(event => !EVENT_TYPES.includes(event.type))
+    if (fake.length) {
+      person.events = person.events.filter(event => EVENT_TYPES.includes(event.type))
+      person.userData = person.userData ?? {}
+      const extraTags: ExtraTag[] = person.userData.extraTags ||= []
+      for (const event of fake) extraTags.push({ tag: event.type, value: event.description || event.date?.raw || '' })
+    }
+    for (const event of [person.birth, person.baptism, person.christening, person.death, person.burial, person.cremation, ...person.events]) cleanEventLineValue(event)
+  }
+  return individuals
+}
+
+// The same old parser read the value on an event line as a date and a description: "1 DEAT Y" got the date and
+// the description "Y", "1 EDUC Some school" a "date" with the school name. A real date comes from a DATE sub-line
+// and differs from the description; a copy without a year is dropped
+const cleanEventLineValue = (event?: GedcomEvent) => {
+  if (!event) return
+  if (event.date && event.date.raw === event.description && !/\b\d{4}\b/.test(event.date.raw)) delete event.date
+  if (event.description === 'Y') event.description = ''
+}
+
+const cleanFamilyEvents = (families: Map<string, GedcomFamily>): Map<string, GedcomFamily> => {
+  for (const family of families.values()) for (const event of [family.marriage, family.divorce, ...(family.engagements || [])]) cleanEventLineValue(event)
+  return families
+}
+
 export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomFile {
   return {
     version: serialized.version,
@@ -82,8 +113,8 @@ export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomF
     source: serialized.source,
     date: new Date(serialized.date),
     copyright: serialized.copyright,
-    individuals: cleanNames(reviveDates(toMap(serialized.individuals))),
-    families: reviveDates(toMap(serialized.families)),
+    individuals: cleanFakeEvents(cleanNames(reviveDates(toMap(serialized.individuals)))),
+    families: cleanFamilyEvents(reviveDates(toMap(serialized.families))),
     sources: toMap(serialized.sources),
     repositories: toMap(serialized.repositories),
     multimedia: toMap(serialized.multimedia),

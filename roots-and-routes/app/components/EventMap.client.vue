@@ -4,7 +4,9 @@
 //
 // - The view is Web Mercator; S-JTSK (EPSG:5514) layers are reprojected in the browser (proj4 + register).
 // - Markers are drawn on the canvas (circle + emoji), not as DOM elements. Several events at one spot (also a
-//   cluster that cannot be split at the maximum zoom) open a small list to choose from.
+//   cluster that cannot be split at the maximum zoom) open a small list to choose from, with the archive map
+//   sheets of their places (Admin → Known locations).
+// - Right click (long press on Android) shows the GPS coordinates of the spot; clicking them copies them.
 // - OpenLayers objects live outside Vue reactivity.
 import 'ol/ol.css'
 import OlMap from 'ol/Map'
@@ -24,7 +26,7 @@ import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
 import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
 import { defaults as defaultControls } from 'ol/control/defaults'
-import { fromLonLat, get as getProjection, transformExtent } from 'ol/proj'
+import { fromLonLat, get as getProjection, toLonLat, transformExtent } from 'ol/proj'
 import { register } from 'ol/proj/proj4'
 import { boundingExtent, getHeight, getWidth } from 'ol/extent'
 import proj4 from 'proj4'
@@ -32,6 +34,8 @@ import type { MapEvent } from '~~/types/gedcom'
 import type { OverlayPoint } from '~~/types/locations'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
+import type { ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
+import { useT } from '~~/composables/useT'
 
 // A georeferenced overlay ready to draw: the image is already fetched as a blob: URL (private, needs the admin token)
 export interface ResolvedOverlay {
@@ -57,6 +61,8 @@ const props = defineProps<{
   eventStyle: (type: string) => { color: string; icon: string }
   // One line in the list of events at one spot ("Narození · J. S.")
   describe: (event: MapEvent) => string
+  // Archive map sheets of a place (empty for visitors and in the anonymous mode)
+  archiveMapsFor?: (place?: string) => ParsedArchiveMap[]
 }>()
 const emit = defineEmits<{
   (event: 'select', value: MapEvent): void
@@ -71,6 +77,7 @@ if (!getProjection('EPSG:5514')) {
   getProjection('EPSG:5514')?.setExtent([-925000, -1444353.536, -400646.464, -920000])
 }
 
+const { t } = useT()
 const element = ref<HTMLDivElement | null>(null)
 let map: OlMap | null = null
 const eventSource = new VectorSource<Feature<Point>>()
@@ -290,8 +297,73 @@ const choose = (event: MapEvent) => {
   emit('select', event)
 }
 
+// Archive map sheets of the places of these events, one group per place that has some
+type PlaceMaps = { place: string; maps: ParsedArchiveMap[] }
+const placeMaps = (events: MapEvent[]): PlaceMaps[] => {
+  const mapsFor = props.archiveMapsFor
+  if (!mapsFor) return []
+  const places = [...new Set(events.map(event => event.place).filter((place): place is string => !!place))]
+  return places.map(place => ({ place, maps: mapsFor(place) })).filter(entry => entry.maps.length)
+}
+const chooserMaps = computed(() => (chooser.value ? placeMaps(chooser.value.events) : []))
+
+// --- right click: GPS coordinates of the spot (and the archive sheets of markers under it) ----------------------
+const context = ref<{ x: number; y: number; lat: number; lon: number; places: PlaceMaps[] } | null>(null)
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+const coordinatesText = computed(() => (context.value ? `${context.value.lat.toFixed(6)}, ${context.value.lon.toFixed(6)}` : ''))
+
+const eventsAtPixel = (pixel: number[]): MapEvent[] => {
+  if (!map) return []
+  const hits = map.getFeaturesAtPixel(pixel, { layerFilter: layer => layer === eventsLayer, hitTolerance: 4 })
+  const members = hits.flatMap(hit => (hit.get('features') as Feature<Point>[] | undefined) ?? [hit as Feature<Point>])
+  return [...new Map(members.map(feature => [feature.getId(), feature.get('event') as MapEvent])).values()]
+}
+
+const onContextMenu = (domEvent: MouseEvent) => {
+  if (!map) return
+  domEvent.preventDefault()
+  chooser.value = null
+  const pixel = map.getEventPixel(domEvent)
+  const [lon, lat] = toLonLat(map.getCoordinateFromPixel(pixel)) as [number, number]
+  copyState.value = 'idle'
+  context.value = { x: pixel[0]!, y: pixel[1]!, lat, lon, places: placeMaps(eventsAtPixel(pixel)) }
+}
+
+// navigator.clipboard needs a secure context; the textarea fallback covers plain http (e.g. the dev server on a LAN address)
+const copyCoordinates = async () => {
+  const text = coordinatesText.value
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(text)
+    else {
+      const area = document.createElement('textarea')
+      area.value = text
+      area.style.position = 'fixed'
+      area.style.opacity = '0'
+      document.body.appendChild(area)
+      area.select()
+      const ok = document.execCommand('copy')
+      area.remove()
+      if (!ok) throw new Error('execCommand copy failed')
+    }
+    copyState.value = 'copied'
+  } catch (error) {
+    console.error('[MAP] Coordinates could not be copied:', error)
+    copyState.value = 'failed'
+  }
+}
+
+// Keeps a popup inside the map horizontally
+const popupLeft = (x: number) => `${Math.max(4, Math.min(x, (element.value?.clientWidth ?? 300) - 270))}px`
+
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return
+  chooser.value = null
+  context.value = null
+}
+
 const onClick = (pixel: number[]) => {
   chooser.value = null
+  context.value = null
   if (!map) return
   const hit = map.forEachFeatureAtPixel(pixel, feature => feature as Feature, { layerFilter: layer => layer === eventsLayer, hitTolerance: 4 })
   if (!hit) {
@@ -389,7 +461,9 @@ onMounted(async () => {
     if (event.dragging || !element.value) return
     element.value.style.cursor = map!.hasFeatureAtPixel(event.pixel, { layerFilter: layer => layer === eventsLayer, hitTolerance: 4 }) ? 'pointer' : ''
   })
-  map.on('movestart', () => { chooser.value = null })
+  map.on('movestart', () => { chooser.value = null; context.value = null })
+  element.value!.addEventListener('contextmenu', onContextMenu)
+  window.addEventListener('keydown', onKeydown)
   if (import.meta.dev) {
     // Hook for the browser tests (docs: skill test-ui): pixel of an event's marker
     ;(window as any).__eventMap = {
@@ -417,6 +491,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
   map?.setTarget(undefined)
   map = null
 })
@@ -441,7 +516,7 @@ watch(() => props.eventStyle, () => { styleCache.clear(); eventsLayer.changed() 
     <div
       v-if="chooser"
       class="absolute z-[1000] max-h-64 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-800"
-      :style="{ left: `${Math.min(chooser.x, (element?.clientWidth ?? 300) - 270)}px`, top: `${chooser.y + 12}px` }"
+      :style="{ left: popupLeft(chooser.x), top: `${chooser.y + 12}px` }"
       data-event-chooser
     >
       <button
@@ -454,6 +529,39 @@ watch(() => props.eventStyle, () => { styleCache.clear(); eventsLayer.changed() 
         <span aria-hidden="true">{{ eventStyle(event.type).icon }}</span>
         <span class="min-w-0 flex-1 truncate">{{ describe(event) }}</span>
       </button>
+      <div v-if="chooserMaps.length" class="mt-1 border-t border-gray-200 px-2 pb-1 pt-1.5 dark:border-gray-700" data-chooser-archive>
+        <div v-for="(entry, index) in chooserMaps" :key="entry.place" class="mb-1">
+          <p class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{{ entry.place }}</p>
+          <ArchiveMapLinks :maps="entry.maps" :show-source="index === chooserMaps.length - 1" />
+        </div>
+      </div>
+    </div>
+    <div
+      v-if="context"
+      class="absolute z-[1000] max-h-72 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-800"
+      :style="{ left: popupLeft(context.x), top: `${context.y + 12}px` }"
+      data-map-context
+    >
+      <button
+        type="button"
+        class="w-full rounded px-2 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+        :title="t('map.coords.copyTitle')"
+        @click="copyCoordinates"
+      >
+        <span class="block text-xs text-gray-500 dark:text-gray-400">{{ t('map.coords.title') }}</span>
+        <span class="block font-mono text-gray-900 dark:text-gray-100">📍 {{ coordinatesText }}</span>
+        <span
+          class="block text-xs"
+          :class="copyState === 'copied' ? 'text-green-700 dark:text-green-400' : copyState === 'failed' ? 'text-red-700 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'"
+          aria-live="polite"
+        >{{ copyState === 'copied' ? t('map.coords.copied') : copyState === 'failed' ? t('map.coords.failed') : t('map.coords.copyHint') }}</span>
+      </button>
+      <div v-if="context.places.length" class="mt-1 border-t border-gray-200 px-2 pb-1 pt-1.5 dark:border-gray-700">
+        <div v-for="(entry, index) in context.places" :key="entry.place" class="mb-1">
+          <p class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{{ entry.place }}</p>
+          <ArchiveMapLinks :maps="entry.maps" :show-source="index === context.places.length - 1" />
+        </div>
+      </div>
     </div>
   </div>
 </template>

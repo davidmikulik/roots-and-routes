@@ -70,6 +70,8 @@ watch([() => mapSettings.value.historicLayer, () => knownLocations.locations.val
     id: overlay.id, width: overlay.width, height: overlay.height, points: overlay.points, url: await knownLocations.overlayImageUrl(overlay.file),
   })))
 }, { immediate: true })
+// Archive map sheets of a place for the list of events at one spot and the right-click popup; hidden with the places
+const archiveMapsFor = (place?: string) => (anon.enabled.value ? [] : knownLocations.archiveMapsFor(place))
 const hasOverlays = computed(() => (knownLocations.locations.value || []).some(location => location.overlays?.length))
 
 // Get map events from store
@@ -404,6 +406,7 @@ onUnmounted(() => {
           :overlays="mapSettings.historicLayer === 'overlays' ? resolvedOverlays : []"
           :event-style="eventStyle"
           :describe="describeEvent"
+          :archive-maps-for="archiveMapsFor"
           @select="selectEvent"
           @close="closeDetail"
           @ready="mapReady = true"

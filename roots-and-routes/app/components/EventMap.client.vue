@@ -6,7 +6,8 @@
 // - Markers are drawn on the canvas (circle + emoji), not as DOM elements. Several events at one spot (also a
 //   cluster that cannot be split at the maximum zoom) open a small list to choose from, with the archive map
 //   sheets of their places (Admin → Known locations).
-// - Right click (long press on Android) shows the GPS coordinates of the spot; clicking them copies them.
+// - Right click (long press on Android) shows the GPS coordinates of the spot; clicking them copies them. Below are
+//   links that open the spot in other map services (utils/map/externalMaps.ts).
 // - OpenLayers objects live outside Vue reactivity.
 import 'ol/ol.css'
 import OlMap from 'ol/Map'
@@ -35,6 +36,7 @@ import type { OverlayPoint } from '~~/types/locations'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
 import type { ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
+import { EXTERNAL_MAPS } from '~~/utils/map/externalMaps'
 import { useT } from '~~/composables/useT'
 
 // A georeferenced overlay ready to draw: the image is already fetched as a blob: URL (private, needs the admin token)
@@ -308,7 +310,7 @@ const placeMaps = (events: MapEvent[]): PlaceMaps[] => {
 const chooserMaps = computed(() => (chooser.value ? placeMaps(chooser.value.events) : []))
 
 // --- right click: GPS coordinates of the spot (and the archive sheets of markers under it) ----------------------
-const context = ref<{ x: number; y: number; lat: number; lon: number; places: PlaceMaps[] } | null>(null)
+const context = ref<{ x: number; y: number; lat: number; lon: number; zoom: number; places: PlaceMaps[] } | null>(null)
 const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
 const coordinatesText = computed(() => (context.value ? `${context.value.lat.toFixed(6)}, ${context.value.lon.toFixed(6)}` : ''))
 
@@ -326,7 +328,7 @@ const onContextMenu = (domEvent: MouseEvent) => {
   const pixel = map.getEventPixel(domEvent)
   const [lon, lat] = toLonLat(map.getCoordinateFromPixel(pixel)) as [number, number]
   copyState.value = 'idle'
-  context.value = { x: pixel[0]!, y: pixel[1]!, lat, lon, places: placeMaps(eventsAtPixel(pixel)) }
+  context.value = { x: pixel[0]!, y: pixel[1]!, lat, lon, zoom: map.getView().getZoom() ?? props.defaultZoom, places: placeMaps(eventsAtPixel(pixel)) }
 }
 
 // navigator.clipboard needs a secure context; the textarea fallback covers plain http (e.g. the dev server on a LAN address)
@@ -556,6 +558,17 @@ watch(() => props.eventStyle, () => { styleCache.clear(); eventsLayer.changed() 
           aria-live="polite"
         >{{ copyState === 'copied' ? t('map.coords.copied') : copyState === 'failed' ? t('map.coords.failed') : t('map.coords.copyHint') }}</span>
       </button>
+      <ul class="px-2 pb-1 text-xs" data-external-maps>
+        <li v-for="service in EXTERNAL_MAPS" :key="service.id">
+          <a
+            :href="service.url(context.lat, context.lon, context.zoom)"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary-700 underline dark:text-primary-300"
+            @click="context = null"
+          >{{ t('map.coords.openIn', { name: service.name }) }} ↗</a>
+        </li>
+      </ul>
       <div v-if="context.places.length" class="mt-1 border-t border-gray-200 px-2 pb-1 pt-1.5 dark:border-gray-700">
         <div v-for="(entry, index) in context.places" :key="entry.place" class="mb-1">
           <p class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{{ entry.place }}</p>

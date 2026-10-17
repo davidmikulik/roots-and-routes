@@ -7,7 +7,7 @@ import { useAnonymize } from '~~/composables/useAnonymize'
 import { useT } from '~~/composables/useT'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { MessageKey } from '~~/i18n'
-import { BASE_LAYERS, HISTORIC_LAYERS } from '~~/utils/map/layers'
+import { BASE_LAYERS, HISTORIC_LAYERS, OVERLAY_LAYERS } from '~~/utils/map/layers'
 
 const { t } = useT()
 
@@ -325,6 +325,7 @@ onUnmounted(() => {
                 <option v-for="layer in HISTORIC_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }} ({{ layer.period }})</option>
               </select>
             </label>
+            <p v-if="mapSettings.historicLayer === 'cio'" class="text-xs opacity-70">{{ t('map.layers.cioHint') }}</p>
             <label v-if="mapSettings.historicLayer !== 'none'" class="block">
               {{ t('map.layers.opacity') }}: {{ mapSettings.historicOpacity }} %
               <input v-model.number="appSettings.settings.value.map.historicOpacity" type="range" min="0" max="100" step="5" class="mt-1 w-full" data-historic-opacity>
@@ -333,6 +334,11 @@ onUnmounted(() => {
               <input v-model="appSettings.settings.value.map.placeNames" type="checkbox" class="mr-3">
               <span :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">{{ t('map.layers.names') }}</span>
             </label>
+            <label v-for="layer in OVERLAY_LAYERS" :key="layer.id" class="flex items-center cursor-pointer">
+              <input v-model="appSettings.settings.value.map.extraLayers" :value="layer.id" type="checkbox" class="mr-3" :data-extra-layer="layer.id">
+              <span :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">{{ t(layer.label as MessageKey) }}</span>
+            </label>
+            <p v-if="mapSettings.extraLayers.length" class="text-xs opacity-70">{{ t('map.layers.extraHint') }}</p>
           </div>
         </div>
 
@@ -403,6 +409,7 @@ onUnmounted(() => {
           :historic-layer="mapSettings.historicLayer"
           :historic-opacity="mapSettings.historicOpacity"
           :place-names="mapSettings.placeNames"
+          :extra-layers="mapSettings.extraLayers"
           :overlays="mapSettings.historicLayer === 'overlays' ? resolvedOverlays : []"
           :event-style="eventStyle"
           :describe="describeEvent"

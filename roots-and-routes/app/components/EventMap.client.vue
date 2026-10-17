@@ -21,6 +21,11 @@ import WMTS from 'ol/source/WMTS'
 import TileWMS from 'ol/source/TileWMS'
 import WMTSTileGrid from 'ol/tilegrid/WMTS'
 import ImageLayer from 'ol/layer/Image'
+import LayerGroup from 'ol/layer/Group'
+import type BaseLayer from 'ol/layer/Base'
+import type ImageTile from 'ol/ImageTile'
+import type Tile from 'ol/Tile'
+import TileState from 'ol/TileState'
 import Static from 'ol/source/ImageStatic'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
@@ -33,7 +38,7 @@ import { boundingExtent, getHeight, getWidth } from 'ol/extent'
 import proj4 from 'proj4'
 import type { MapEvent } from '~~/types/gedcom'
 import type { OverlayPoint } from '~~/types/locations'
-import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
+import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, OVERLAY_LAYERS, type HistoricLayer, type WmsLayer, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
 import type { ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 import { EXTERNAL_MAPS } from '~~/utils/map/externalMaps'
@@ -58,6 +63,8 @@ const props = defineProps<{
   historicLayer: string
   historicOpacity: number
   placeNames: boolean
+  // Ids of the transparent overlays switched on (cadastral map, RÚIAN)
+  extraLayers?: string[]
   // Georeferenced uploaded sheets to draw (admin only); empty when not shown
   overlays?: ResolvedOverlay[]
   eventStyle: (type: string) => { color: string; icon: string }
@@ -94,8 +101,30 @@ const xyzLayer = (layer: XyzLayer) => new TileLayer({
   visible: false,
   source: new XYZ({ url: layer.url, attributions: layer.attribution, maxZoom: layer.maxZoom, crossOrigin: 'anonymous' }),
 })
-const wmtsLayer = (layer: WmtsLayer) => new TileLayer({
-  visible: false,
+// Loads a tile and turns pure white pixels transparent (a regional service fills the area outside its region with white)
+const loadWithoutWhite = (tile: Tile, src: string) => {
+  const image = new Image()
+  image.crossOrigin = 'anonymous'
+  image.onload = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = image.naturalWidth
+    canvas.height = image.naturalHeight
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) { (tile as ImageTile).setImage(image); return }
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
+    const data = pixels.data
+    for (let index = 0; index < data.length; index += 4) {
+      if (data[index]! >= 248 && data[index + 1]! >= 248 && data[index + 2]! >= 248) data[index + 3] = 0
+    }
+    context.putImageData(pixels, 0, 0)
+    ;(tile as ImageTile).setImage(canvas)
+  }
+  image.onerror = () => tile.setState(TileState.ERROR)
+  image.src = src
+}
+const wmtsLayer = (layer: WmtsLayer, visible = false) => new TileLayer({
+  visible,
   minZoom: layer.minZoom,
   extent: transformExtent(layer.grid.extent, layer.projection, 'EPSG:3857'),
   source: new WMTS({
@@ -115,20 +144,28 @@ const wmtsLayer = (layer: WmtsLayer) => new TileLayer({
     attributions: layer.attribution,
     crossOrigin: 'anonymous',
     wrapX: false,
+    ...(layer.whiteIsEmpty ? { tileLoadFunction: loadWithoutWhite } : {}),
   }),
 })
+// A group (imperial imprints of several regions) is one layer for the switch; its parts stay visible inside it
+const historicLayer = (layer: HistoricLayer): BaseLayer => (layer.kind === 'group'
+  ? new LayerGroup({ visible: false, minZoom: layer.minZoom, layers: layer.parts.map(part => wmtsLayer(part, true)) })
+  : wmtsLayer(layer))
 const baseLayers = new Map(BASE_LAYERS.map(layer => [layer.id, xyzLayer(layer)]))
-const historicLayers = new Map(HISTORIC_LAYERS.map(layer => [layer.id, wmtsLayer(layer)]))
-const namesLayer = new TileLayer({
+const historicLayers = new Map(HISTORIC_LAYERS.map(layer => [layer.id, historicLayer(layer)]))
+const wmsLayer = (layer: WmsLayer) => new TileLayer({
   visible: false,
+  minZoom: layer.minZoom,
   source: new TileWMS({
-    url: NAMES_LAYER.url,
-    params: { LAYERS: NAMES_LAYER.layers, TRANSPARENT: NAMES_LAYER.transparent, FORMAT: 'image/png', VERSION: '1.3.0' },
+    url: layer.url,
+    params: { LAYERS: layer.layers, TRANSPARENT: layer.transparent, FORMAT: 'image/png', VERSION: '1.3.0' },
     projection: 'EPSG:3857',
-    attributions: NAMES_LAYER.attribution,
+    attributions: layer.attribution,
     crossOrigin: 'anonymous',
   }),
 })
+const namesLayer = wmsLayer(NAMES_LAYER)
+const extraLayers = new Map(OVERLAY_LAYERS.map(layer => [layer.id, wmsLayer(layer)]))
 
 const applyLayers = () => {
   for (const [id, layer] of baseLayers) layer.setVisible(id === props.baseLayer)
@@ -139,6 +176,7 @@ const applyLayers = () => {
     layer.setOpacity(props.historicOpacity / 100)
   }
   namesLayer.setVisible(props.placeNames)
+  for (const [id, layer] of extraLayers) layer.setVisible(!!props.extraLayers?.includes(id))
 }
 
 // --- georeferenced uploaded overlays -----------------------------------------------------------------------
@@ -449,7 +487,7 @@ onMounted(async () => {
   if (!await whenElement()) return
   map = new OlMap({
     target: element.value!,
-    layers: [...baseLayers.values(), ...historicLayers.values(), namesLayer, linesLayer, eventsLayer],
+    layers: [...baseLayers.values(), ...historicLayers.values(), namesLayer, ...extraLayers.values(), linesLayer, eventsLayer],
     view: new View({ center: fromLonLat([14.4378, 50.0755]), zoom: props.defaultZoom, maxZoom: MAX_ZOOM }),
     controls: defaultControls({ attributionOptions: { collapsible: true, collapsed: false } }),
   })
@@ -505,7 +543,7 @@ watch(() => props.events, () => {
 watch(() => props.migration, updateLines)
 watch(() => props.clusters, applyClusters)
 watch(() => props.selectedId, () => eventsLayer.changed())
-watch(() => [props.baseLayer, props.historicLayer, props.historicOpacity, props.placeNames], applyLayers)
+watch(() => [props.baseLayer, props.historicLayer, props.historicOpacity, props.placeNames, props.extraLayers], applyLayers, { deep: true })
 watch(() => [props.overlays, props.historicOpacity], applyOverlays, { deep: true })
 watch(() => props.defaultZoom, () => { if (!props.events.length) map?.getView().setZoom(props.defaultZoom) })
 // Event styles depend on the language only through labels in the list, but the icons/colours are cached per type

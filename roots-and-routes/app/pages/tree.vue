@@ -9,6 +9,7 @@ import { useSettings } from '~~/composables/useSettings'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { messages, type MessageKey } from '~~/i18n'
 import { useT } from '~~/composables/useT'
+import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
 
 const { t } = useT()
@@ -64,6 +65,15 @@ const selectedGeoEvents = computed(() => {
   return [individual.birth, individual.baptism, individual.christening, individual.death, individual.burial, individual.cremation, ...individual.events]
     .filter(withCoordinates)
     .map((event, index) => ({ key: `${index}-${event.type}`, type: String(event.type), place: event.place || '' }))
+})
+
+// Historical map sheets of the selected person's places (Admin → Known locations); not in the anonymous mode
+const knownLocations = useKnownLocations()
+knownLocations.autoLoad()
+const selectedArchiveMaps = computed(() => {
+  if (anon.enabled.value) return []
+  const places = [...new Set(selectedGeoEvents.value.map(event => event.place).filter(Boolean))]
+  return places.map(place => ({ place, maps: knownLocations.archiveMapsFor(place) })).filter(entry => entry.maps.length)
 })
 
 const placeTip = (place: string): string => {
@@ -732,6 +742,16 @@ const deletePerson = async (person: AppPerson) => {
                     {{ eventLabel(event.type) }}
                   </span>
                 </HoverTip>
+              </div>
+            </div>
+
+            <div v-if="selectedArchiveMaps.length" class="mt-4" data-archive-maps>
+              <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
+                {{ t('tree.archiveMaps') }}
+              </div>
+              <div v-for="entry in selectedArchiveMaps" :key="entry.place" class="mb-2">
+                <div class="text-sm font-medium">{{ entry.place }}</div>
+                <ArchiveMapLinks :maps="entry.maps" :show-source="entry === selectedArchiveMaps.at(-1)" />
               </div>
             </div>
 

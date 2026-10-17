@@ -11,6 +11,7 @@ import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
 import { displayName } from '~~/utils/gedcom/treeGraph'
 import { formatGedcomDate } from '~~/utils/gedcom/dates'
+import { useKnownLocations } from '~~/composables/useKnownLocations'
 
 const props = defineProps<{
   file: GedcomFile | null
@@ -40,6 +41,9 @@ const events = computed(() => [...(props.eventsByPerson.get(props.personId) ?? [
 
 // A full date is written out in the current language ("17. března 1832"); the anonymous mode keeps only the year
 const dateText = (raw = ''): string => (anon.enabled.value ? anon.date(raw) : formatGedcomDate(raw, locale.value))
+// Historical map sheets of the event's place (Admin → Known locations); hidden in the anonymous mode with the place
+const knownLocations = useKnownLocations()
+const archiveMaps = (event: MapEvent) => (anon.enabled.value ? [] : knownLocations.archiveMapsFor(event.place))
 const detailLine = (event: MapEvent): string => [dateText(event.date), anon.place(event.place)].filter(Boolean).join(' · ')
 
 const GROUP_LABELS: Record<'parents' | 'partners' | 'children', MessageKey> = {
@@ -121,6 +125,7 @@ const avatar = computed(() => {
               <span v-if="detailLine(event)" class="block break-words text-xs text-gray-600 dark:text-gray-300">{{ detailLine(event) }}</span>
             </span>
           </button>
+          <ArchiveMapLinks :maps="archiveMaps(event)" class="ml-9 mt-0.5" />
         </li>
       </ul>
     </section>

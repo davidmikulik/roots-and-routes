@@ -5,6 +5,7 @@ import type { MapEvent } from '~~/types/gedcom'
 import { useSettings } from '~~/composables/useSettings'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { useT } from '~~/composables/useT'
+import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { MessageKey } from '~~/i18n'
 
 const { t } = useT()
@@ -56,6 +57,8 @@ const startYear = ref('')
 const endYear = ref('')
 
 const selectedEvent = ref<MapEvent | null>(null)
+// Archive map links of places in the detail panel (administrator only)
+useKnownLocations().autoLoad()
 // Leaflet markers by event id (not reactive: Leaflet objects must not be wrapped in proxies)
 const markers = new Map<string, any>()
 

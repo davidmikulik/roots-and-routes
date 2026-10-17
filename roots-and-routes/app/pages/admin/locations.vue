@@ -5,6 +5,8 @@ import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import type { KnownLocation } from '~~/types/locations'
+import { useKnownLocations } from '~~/composables/useKnownLocations'
+import { parseArchiveMapUrl, type ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -26,6 +28,26 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const isImporting = ref(false)
 
 const getHeaders = () => adminAuth.authHeaders()
+const knownLocations = useKnownLocations()
+
+// Links to sheets in the ČÚZK archive viewer (císařské otisky, originální mapy…) for each place
+const archiveDrafts = ref(new Map<KnownLocation, string>())
+const archiveMapsOf = (location: KnownLocation): ParsedArchiveMap[] =>
+  (location.archiveMaps || []).map(map => parseArchiveMapUrl(map.url)).filter((map): map is ParsedArchiveMap => !!map)
+const addArchiveMap = (location: KnownLocation) => {
+  const parsed = parseArchiveMapUrl(archiveDrafts.value.get(location) || '')
+  if (!parsed) {
+    errorMessage.value = t('locations.archive.invalid')
+    return
+  }
+  errorMessage.value = ''
+  const maps = location.archiveMaps || []
+  if (!maps.some(map => map.url === parsed.url)) location.archiveMaps = [...maps, { url: parsed.url }]
+  archiveDrafts.value = new Map(archiveDrafts.value).set(location, '')
+}
+const removeArchiveMap = (location: KnownLocation, index: number) => {
+  location.archiveMaps = (location.archiveMaps || []).filter((_, position) => position !== index)
+}
 
 const loadLocations = async () => {
   if (!adminAuth.isAdmin.value) {
@@ -38,6 +60,7 @@ const loadLocations = async () => {
   try {
     const response = await $fetch<{ locations: KnownLocation[] }>('/api/admin/locations', { headers: getHeaders() })
     locations.value = response.locations.map(location => ({ ...location }))
+    knownLocations.set(locations.value)
     isConnected.value = true
   } catch (error: any) {
     isConnected.value = false
@@ -89,6 +112,7 @@ const syncWithTree = async () => {
   try {
     const result = await gedcomStore.syncKnownLocations(locations.value)
     locations.value = result.catalog.map(location => ({ ...location })).sort((first, second) => first.name.localeCompare(second.name))
+    knownLocations.set(locations.value)
     successMessage.value = t('locations.sync.done', { added: result.added, updated: result.updated, filled: result.filled, overwritten: result.overwritten })
   } catch (error: any) {
     errorMessage.value = error.data?.statusMessage || error.message || t('locations.error.save')
@@ -107,6 +131,7 @@ const saveLocations = async () => {
       headers: getHeaders(),
       body: { locations: locations.value },
     })
+    knownLocations.set(locations.value)
     const refreshedLocations = await gedcomStore.refreshLocationCoordinates(locations.value)
     successMessage.value = t('locations.success.saved', { saved: response.count, updated: refreshedLocations })
   } catch (error: any) {
@@ -338,6 +363,21 @@ const handleImport = async (event: Event) => {
                 <td class="px-4 py-2">
                   <input v-model="location.name" required maxlength="300" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.nameAria', { index: index + 1 })">
                   <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">{{ t('locations.table.coordsNeeded') }}</span>
+                  <div class="mt-2" data-archive-maps>
+                    <ArchiveMapLinks :maps="archiveMapsOf(location)" removable :show-source="false" @remove="removeArchiveMap(location, $event)" />
+                    <div class="mt-1 flex gap-2">
+                      <input
+                        :value="archiveDrafts.get(location) || ''"
+                        @input="archiveDrafts = new Map(archiveDrafts).set(location, ($event.target as HTMLInputElement).value)"
+                        @keydown.enter.prevent="addArchiveMap(location)"
+                        inputmode="url"
+                        class="min-w-0 flex-1 rounded border px-2 py-1 text-xs"
+                        :placeholder="t('locations.archive.placeholder')"
+                        :aria-label="t('locations.archive.aria', { name: location.name })"
+                      >
+                      <button type="button" class="rounded border px-2 py-1 text-xs" @click="addArchiveMap(location)">{{ t('locations.archive.add') }}</button>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-4 py-2">
                   <input v-model.number="location.latitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.latitudeAria', { name: location.name })" :placeholder="t('locations.table.pending')">

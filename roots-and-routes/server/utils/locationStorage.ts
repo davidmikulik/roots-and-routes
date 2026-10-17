@@ -14,7 +14,9 @@ function isKnownLocation(value: unknown): value is KnownLocation {
     && Number.isFinite(location.longitude)
     && Math.abs(location.latitude) <= 90
     && Math.abs(location.longitude) <= 180
-  return typeof location.name === 'string' && location.name.trim().length > 0 && (hasNoCoordinates || hasValidCoordinates)
+  const validArchiveMaps = location.archiveMaps === undefined
+    || (Array.isArray(location.archiveMaps) && location.archiveMaps.every(map => typeof map?.url === 'string'))
+  return typeof location.name === 'string' && location.name.trim().length > 0 && (hasNoCoordinates || hasValidCoordinates) && validArchiveMaps
 }
 
 export async function loadKnownLocations(): Promise<KnownLocation[]> {

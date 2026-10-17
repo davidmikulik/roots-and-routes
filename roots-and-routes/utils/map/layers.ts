@@ -23,7 +23,8 @@ interface LayerBase {
   // Below this zoom of the map the layer is not drawn (regional layers would only request empty tiles)
   minZoom?: number
 }
-export interface XyzLayer extends LayerBase { kind: 'xyz'; url: string }
+// retry: the server renders tiles on demand and answers 404 until a tile is ready, so failed tiles are loaded again
+export interface XyzLayer extends LayerBase { kind: 'xyz'; url: string; retry?: boolean }
 export interface WmtsLayer extends LayerBase {
   kind: 'wmts'
   projection: 'EPSG:5514'
@@ -53,13 +54,15 @@ export const BASE_LAYERS: XyzLayer[] = [
     maxZoom: 19,
   },
   {
-    // Topographic map with contour lines and relief from OpenStreetMap data (CC BY-SA, fair use)
+    // Topographic map with contour lines and relief from OpenStreetMap data (CC BY-SA, fair use). Slow and busy:
+    // tiles that were not rendered yet come back as 404 first (checked 17. 10. 2026)
     id: 'otm',
     kind: 'xyz',
     label: 'map.layer.otm',
     url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
     attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, styl © <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC BY-SA)',
     maxZoom: 17,
+    retry: true,
   },
   {
     id: 'ztm',

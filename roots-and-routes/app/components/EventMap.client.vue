@@ -97,9 +97,30 @@ const MAX_ZOOM = 19
 const CLUSTER_DISTANCE = 40
 
 // --- layers -------------------------------------------------------------------------------------------------
+// Loads a tile and tries again a few times when it fails: a server that renders tiles on demand (OpenTopoMap)
+// answers 404 until the tile is ready, and the default loader would leave a hole for good
+const RETRY_DELAYS = [1500, 4000, 10000]
+const loadWithRetry = (tile: Tile, src: string) => {
+  const image = new Image()
+  image.crossOrigin = 'anonymous'
+  let attempt = 0
+  image.onload = () => (tile as ImageTile).setImage(image)
+  image.onerror = () => {
+    const delay = RETRY_DELAYS[attempt++]
+    if (delay === undefined) { tile.setState(TileState.ERROR); return }
+    setTimeout(() => { image.src = src }, delay)
+  }
+  image.src = src
+}
 const xyzLayer = (layer: XyzLayer) => new TileLayer({
   visible: false,
-  source: new XYZ({ url: layer.url, attributions: layer.attribution, maxZoom: layer.maxZoom, crossOrigin: 'anonymous' }),
+  source: new XYZ({
+    url: layer.url,
+    attributions: layer.attribution,
+    maxZoom: layer.maxZoom,
+    crossOrigin: 'anonymous',
+    ...(layer.retry ? { tileLoadFunction: loadWithRetry } : {}),
+  }),
 })
 // Loads a tile and turns pure white pixels transparent (a regional service fills the area outside its region with white)
 const loadWithoutWhite = (tile: Tile, src: string) => {

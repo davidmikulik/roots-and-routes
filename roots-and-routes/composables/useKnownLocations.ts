@@ -62,6 +62,8 @@ export const useKnownLocations = () => {
       access: 'private',
       handleUploadUrl: '/api/media/overlay-token',
       clientPayload: adminAuth.token.value,
+      // server/middleware/adminWrites.ts needs the token on every POST, including this token request
+      headers: adminAuth.authHeaders(),
       contentType: file.type || 'image/jpeg',
       multipart: file.size > 8 * 1024 * 1024,
     })

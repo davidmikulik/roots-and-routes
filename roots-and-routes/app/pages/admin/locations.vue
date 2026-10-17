@@ -64,6 +64,8 @@ const removeArchiveMap = async (location: KnownLocation, index: number) => {
 
 // Uploaded georeferenced sheets
 const uploadingFor = ref<KnownLocation | null>(null)
+// The error of the last upload, shown next to the place's button (the page-wide message is far up the table)
+const uploadError = ref<{ location: KnownLocation; message: string } | null>(null)
 const editor = ref<{ points: () => OverlayPoint[]; maxResidual: () => number } | null>(null)
 const overlayDialog = ref<{ location: KnownLocation; draft: MapOverlay; imageUrl: string } | null>(null)
 
@@ -73,12 +75,14 @@ const startUpload = async (location: KnownLocation, event: Event) => {
   if (!file) return
   uploadingFor.value = location
   errorMessage.value = ''
+  uploadError.value = null
   try {
     const { file: path, width, height } = await knownLocations.uploadOverlay(file)
     const draft: MapOverlay = { id: crypto.randomUUID().slice(0, 8), file: path, title: location.name, source: '', width, height, points: [] }
     overlayDialog.value = { location, draft, imageUrl: await knownLocations.overlayImageUrl(path) }
   } catch (error: any) {
     errorMessage.value = t('overlay.uploadFailed', { error: error?.data?.statusMessage || error?.message || '' })
+    uploadError.value = { location, message: errorMessage.value }
   } finally {
     uploadingFor.value = null
   }
@@ -93,7 +97,8 @@ const editOverlay = async (location: KnownLocation, overlay: MapOverlay) => {
   }
 }
 
-const saveOverlay = () => {
+// Placing or removing a sheet saves the catalog right away, like the place links
+const saveOverlay = async () => {
   const dialog = overlayDialog.value
   if (!dialog || !editor.value) return
   const points = editor.value.points()
@@ -104,10 +109,12 @@ const saveOverlay = () => {
   const index = list.findIndex(o => o.id === overlay.id)
   dialog.location.overlays = index >= 0 ? list.map(o => (o.id === overlay.id ? overlay : o)) : [...list, overlay]
   overlayDialog.value = null
+  await saveLocations()
 }
 
-const removeOverlay = (location: KnownLocation, index: number) => {
+const removeOverlay = async (location: KnownLocation, index: number) => {
   location.overlays = (location.overlays || []).filter((_, position) => position !== index)
+  await saveLocations()
 }
 
 const loadLocations = async () => {
@@ -464,6 +471,7 @@ const handleImport = async (event: Event) => {
                       <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingFor === location" @change="startUpload(location, $event)">
                       {{ uploadingFor === location ? t('overlay.uploading') : t('overlay.upload') }}
                     </label>
+                    <p v-if="uploadError?.location === location" role="alert" class="mt-1 text-xs text-red-700 dark:text-red-300">{{ uploadError.message }}</p>
                   </div>
                 </td>
                 <td class="px-4 py-2">

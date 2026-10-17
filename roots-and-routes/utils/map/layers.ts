@@ -103,6 +103,42 @@ export const HISTORIC_LAYERS: WmtsLayer[] = [
     },
     attribution: 'Císařské otisky © ČÚZK, služba © <a href="https://geoportal.kraj-jihocesky.gov.cz" target="_blank" rel="noopener">Jihočeský kraj</a>',
   },
+  {
+    // South Moravian Region only (Brno, Znojmo…)
+    id: 'cio-jmk',
+    kind: 'wmts',
+    label: 'map.layer.cioJmk',
+    period: '1824–1836',
+    minZoom: 10,
+    projection: 'EPSG:5514',
+    url: 'https://mapy1.jmk.cz/erdas-iws/ogc/wmts/JMK_CO/Cisarske_otisky/default/JTSK:epsg:5514/{TileMatrix}/{TileRow}/{TileCol}.jpg',
+    grid: {
+      origin: [-925000, -920000],
+      scaleDenominators: [7315200, 3657600, 1828800, 914400, 457200, 228600, 114300, 57150, 28575, 14287.5, 7143.75, 3571.875, 1785.9375, 892.96875, 446.484375],
+      tileSize: 256,
+      // from the WGS84 bounding box of the capabilities
+      extent: [-694485, -1238304, -515817, -1095170],
+    },
+    attribution: 'Císařské otisky © ČÚZK, služba © <a href="https://mapy.jmk.cz/geoportal" target="_blank" rel="noopener">Jihomoravský kraj</a>',
+  },
+  {
+    // Moravian-Silesian Region only (Ostrava, Český Těšín…); scans of ÚAZK, 1830–1836
+    id: 'cio-msk',
+    kind: 'wmts',
+    label: 'map.layer.cioMsk',
+    period: '1830–1836',
+    minZoom: 10,
+    projection: 'EPSG:5514',
+    url: 'https://gis2.msk.cz/arcgis/rest/services/podklad/podklad_cis_otisky/MapServer/WMTS/tile/1.0.0/podklad_podklad_cis_otisky/default/default028mm/{TileMatrix}/{TileRow}/{TileCol}',
+    grid: {
+      // ArcGIS default tiling origin
+      origin: [-33699800, 33699800],
+      scaleDenominators: [3657607.3152141706, 1828803.6576070853, 914401.8288035427, 457200.9144017713, 228600.45720088566, 114300.22860044283, 57150.114300221416, 28575.057150110708, 14287.528575055354, 7143.764287527677, 3571.8821437638385, 1785.9410718819192, 892.9705359409596, 446.95773915351737],
+      tileSize: 256,
+      extent: [-552132.4334999993, -1151590.2657999992, -431585.2133000009, -1042986.9957999997],
+    },
+    attribution: 'Císařské otisky © ČÚZK, služba © <a href="https://geoportal.msk.cz" target="_blank" rel="noopener">Moravskoslezský kraj</a>',
+  },
 ]
 
 // Transparent overlay with historical (e.g. German) place names

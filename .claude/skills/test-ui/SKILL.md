@@ -25,7 +25,7 @@ Chrome je v `C:\Program Files\Google\Chrome\Application\chrome.exe`. Puppeteer p
 
 | Oblast | Kontrola |
 |---|---|
-| Mapa | `#map-container` má na telefonu výšku > 0. `.leaflet-container` nesmí mít v CSS `height`. Klepnutí na značku otevře `MapPersonPanel`, Esc nebo klepnutí do mapy ho zavře. |
+| Mapa | `#map-container` má na telefonu výšku > 0 a `.ol-viewport canvas` existuje. Značky jsou na plátně, ne v DOM: pozici zjisti přes `window.__eventMap.pixelOf(id)` (jen `npm run dev`) a klepni na `getBoundingClientRect()` prvku `[data-event-map]` + pixel. Klepnutí na značku otevře `MapPersonPanel`, Esc nebo klepnutí do mapy ho zavře. Shluk se klepnutím přiblíží nebo ukáže `[data-event-chooser]`. Historické vrstvy: přepni `[data-historic-layer]` a sleduj požadavky na `gis.cenia.cz` / `gis.kraj-jihocesky.cz`. |
 | Bubliny (`HoverTip`) | Fungují při najetí i při fokusu a nepřetékají přes okraj obrazovky. |
 | Strom / graf | Po přepnutí stránky a po reloadu jsou data pořád vidět. |
 | Jazyk | Přepni EN/CS v Nastavení a ověř, že nezůstal žádný text nepřeložený. |

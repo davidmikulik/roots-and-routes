@@ -7,6 +7,7 @@ import { useAnonymize } from '~~/composables/useAnonymize'
 import { useT } from '~~/composables/useT'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { MessageKey } from '~~/i18n'
+import { BASE_LAYERS, HISTORIC_LAYERS } from '~~/utils/map/layers'
 
 const { t } = useT()
 
@@ -26,12 +27,11 @@ onMounted(async () => {
 })
 
 const mapReady = ref(false)
-// shallowRef: a deep ref would wrap the Leaflet map in a reactive proxy, which breaks leaflet.markercluster
-const mapInstance = shallowRef<any>(null)
-// Marker layer (a cluster group or a plain layer group); replaced on every refresh
-let markerLayer: any = null
-const center = ref<[number, number]>([50.0755, 14.4378])
+// The OpenLayers map (EventMap.client.vue): markers, clusters, layers; this page keeps filters and the detail panel
+const eventMap = ref<{ reveal: (id: string) => Promise<void>; goTo: (id: string) => void; container: () => HTMLElement | null } | null>(null)
 const zoom = ref(appSettings.settings.value.map.defaultZoom)
+// Layer choice is remembered in the settings
+const mapSettings = computed(() => appSettings.settings.value.map)
 
 // Event type filters
 const showBirth = ref(true)
@@ -46,7 +46,6 @@ const applyMapSettings = () => {
   showMigration.value = map.showMigrationLines
   showClusters.value = map.showClusters
   zoom.value = map.defaultZoom
-  if (mapInstance.value && filteredEvents.value.length === 0) mapInstance.value.setView(center.value, zoom.value)
 }
 if (appSettings.ready.value) applyMapSettings()
 else watch(appSettings.ready, (ready) => { if (ready) applyMapSettings() }, { once: true })
@@ -59,8 +58,6 @@ const endYear = ref('')
 const selectedEvent = ref<MapEvent | null>(null)
 // Archive map links of places in the detail panel (administrator only)
 useKnownLocations().autoLoad()
-// Leaflet markers by event id (not reactive: Leaflet objects must not be wrapped in proxies)
-const markers = new Map<string, any>()
 
 // Get map events from store
 const mapEvents = computed<MapEvent[]>(() => {
@@ -91,6 +88,14 @@ const eventTypeConfig = {
 
 const eventLabel = (type: string) =>
   type in eventTypeConfig ? t(`map.event.${type}` as MessageKey) : type
+const eventStyle = (type: string) => eventTypeConfig[type as keyof typeof eventTypeConfig] || { color: '#9ca3af', icon: '⚪' }
+// A line in the list of events at one spot on the map
+const describeEvent = (event: MapEvent): string => {
+  const person = gedcomStore.state.value.file?.individuals.get(event.personId)
+  const name = anon.name(person?.names[0]?.full || event.personName || '')
+  const year = anon.date(event.date || '').match(/\b\d{4}\b/)?.[0]
+  return [eventLabel(event.type), year, name].filter(Boolean).join(' · ')
+}
 
 type EventCategory = 'birth' | 'marriage' | 'death' | 'other'
 
@@ -143,165 +148,11 @@ const eventsByPerson = computed(() => {
   return groups
 })
 
-// Moves the map to the events once; returns false while there are none yet (the data may load after the map)
-let fitted = false
-const fitToEvents = (): boolean => {
-  if (!mapInstance.value || filteredEvents.value.length === 0) return false
-  const L = (window as any).L
-  const points = filteredEvents.value.map(e => [e.coordinates[0], e.coordinates[1]] as [number, number])
-  const onePlace = points.every(point => point[0] === points[0][0] && point[1] === points[0][1])
-  // fitBounds on a single place would zoom in as far as possible; use the default zoom instead
-  if (onePlace) mapInstance.value.setView(points[0], zoom.value)
-  else mapInstance.value.fitBounds(L.latLngBounds(points), { padding: [50, 50] })
-  return true
-}
-
-const initMap = () => {
-  if (typeof window !== 'undefined' && (window as any).L) {
-    const L = (window as any).L
-    mapInstance.value = L.map('map-container').setView(center.value, zoom.value)
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(mapInstance.value)
-    
-    // A click on the empty map closes the detail (marker clicks do not bubble up to the map)
-    mapInstance.value.on('click', closeDetail)
-
-    fitted = fitToEvents()
-
-    // Markers go in after the final view is set: leaflet.markercluster loses its markers when the view
-    // jumps many zoom levels (e.g. default zoom 18 -> fit to the events) while it already holds them
-    updateMapMarkers()
-    
-    mapReady.value = true
-  }
-}
-
-const makeIcon = (event: MapEvent, selected: boolean) => {
-  const L = (window as any).L
-  const config = eventTypeConfig[event.type as keyof typeof eventTypeConfig] || { color: '#9ca3af', icon: '⚪' }
-  const ring = selected
-    ? 'border: 3px solid #1d4ed8; box-shadow: 0 0 0 4px rgba(37,99,235,0.35), 0 3px 8px rgba(0,0,0,0.35); transform: scale(1.2);'
-    : 'border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'
-  return L.divIcon({
-    html: `<div style="background-color: ${config.color}; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: white; box-sizing: border-box; ${ring}">${config.icon}</div>`,
-    className: 'custom-marker-icon',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-  })
-}
-
-const updateMapMarkers = () => {
-  if (!mapInstance.value) return
-  const L = (window as any).L
-  
-  if (markerLayer) mapInstance.value.removeLayer(markerLayer)
-  mapInstance.value.eachLayer((layer: any) => {
-    if (layer instanceof L.Polyline) {
-      mapInstance.value.removeLayer(layer)
-    }
-  })
-  // Clusters need the leaflet.markercluster script (loaded in nuxt.config); without it plain markers are shown
-  markerLayer = showClusters.value && L.markerClusterGroup ? L.markerClusterGroup() : L.layerGroup()
-  
-  markers.clear()
-  filteredEvents.value.forEach(event => {
-    const marker = L.marker([event.coordinates[0], event.coordinates[1]], {
-      icon: makeIcon(event, event.id === selectedEvent.value?.id),
-    }).addTo(markerLayer)
-    markers.set(event.id, marker)
-    marker.on('click', () => selectEvent(event))
-  })
-
-  markerLayer.addTo(mapInstance.value)
-
-  // The selected person's event may have been filtered out
-  if (selectedEvent.value && !markers.has(selectedEvent.value.id)) closeDetail()
-
-  if (showMigration.value) {
-    addMigrationLines()
-  }
-}
-
-const addMigrationLines = () => {
-  if (!mapInstance.value) return
-  const L = (window as any).L
-  const personEvents = new Map<string, MapEvent[]>()
-  
-  filteredEvents.value.forEach(event => {
-    if (!personEvents.has(event.personId)) {
-      personEvents.set(event.personId, [])
-    }
-    personEvents.get(event.personId)!.push(event)
-  })
-  
-  personEvents.forEach((events: MapEvent[], personId: string) => {
-    if (events.length < 2) return
-    
-    // Sort events by date if possible, otherwise by coordinates
-    const sortedEvents = [...events].sort((a, b) => {
-      if (a.date && b.date) {
-        const yearA = Number(a.date.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0])
-        const yearB = Number(b.date.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0])
-        if (yearA && yearB) return yearA - yearB
-        return a.date.localeCompare(b.date)
-      }
-      return 0
-    })
-    
-    for (let i = 0; i < sortedEvents.length - 1; i++) {
-      const start = sortedEvents[i]
-      const end = sortedEvents[i + 1]
-      
-      L.polyline(
-        [[start.coordinates[0], start.coordinates[1]], [end.coordinates[0], end.coordinates[1]]],
-        {
-          color: eventTypeConfig[start.type as keyof typeof eventTypeConfig]?.color || '#666',
-          weight: 2,
-          opacity: 0.7,
-          dashArray: '5, 5',
-        }
-      ).addTo(mapInstance.value)
-    }
-  })
-}
-
-// Moves the map just enough so the selected marker is clear of the detail panel and not too close to the map edge
-const revealMarker = async (event: MapEvent) => {
-  await nextTick()
-  const map = mapInstance.value
-  const panel = document.querySelector('[data-map-panel]')
-  if (!map || !panel) return
-  const container = map.getContainer().getBoundingClientRect()
-  const box = panel.getBoundingClientRect()
-  const point = map.latLngToContainerPoint(event.coordinates)
-  const edge = 40
-  const left = box.left - container.left - edge
-  const right = box.right - container.left + edge
-  const top = box.top - container.top - edge
-  const bottom = box.bottom - container.top + edge
-  // Only the part of the map that is on screen counts (the map may be partly scrolled out of the window)
-  const minY = Math.max(0, -container.top) + edge
-  const maxY = Math.min(container.height, window.innerHeight - container.top) - edge
-  // Candidate shifts ([dx, dy] moves the marker to [x - dx, y - dy]); only those that stay inside the visible map are allowed
-  const fits = (dx: number, dy: number) => point.x - dx >= edge && point.x - dx <= container.width - edge && point.y - dy >= minY && point.y - dy <= maxY
-  const covered = point.x > left && point.x < right && point.y > top && point.y < bottom
-  const options = covered
-    ? [[0, point.y - top], [point.x - left, 0], [point.x - right, 0], [0, point.y - bottom]]
-    : [[0, 0]]
-  const clampX = Math.min(0, point.x - edge) + Math.max(0, point.x - (container.width - edge))
-  const clampY = Math.min(0, point.y - minY) + Math.max(0, point.y - maxY)
-  const [dx, dy] = options.filter(([x, y]) => fits(x, y)).sort((a, c) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(c[0]) - Math.abs(c[1]))[0]
-    ?? [clampX, clampY]
-  if (covered || clampX || clampY) map.panBy([covered ? dx : clampX, covered ? dy : clampY])
-}
-
 // The map is taller than the window, and on phones it starts below the fold: the detail panel is kept inside the part
 // of the map that is on screen, otherwise it would open out of sight at the map's bottom (phones) or top (desktop) edge
 const panelInset = ref({ top: 12, bottom: 12, max: 0 })
 const updatePanelInset = () => {
-  const container = mapInstance.value?.getContainer().getBoundingClientRect()
+  const container = eventMap.value?.container()?.getBoundingClientRect()
   if (!container) return
   const gap = 12
   const visible = Math.min(container.bottom, window.innerHeight) - Math.max(container.top, 0)
@@ -322,7 +173,7 @@ const onViewportChange = () => {
 
 // Scrolls the page just enough to show the whole map when it fits in the window, so the panel and the marker both have room
 const scrollMapIntoView = () => {
-  const container = mapInstance.value?.getContainer().getBoundingClientRect()
+  const container = eventMap.value?.container()?.getBoundingClientRect()
   if (!container || container.height > window.innerHeight) return
   const delta = container.top < 0 ? container.top : Math.max(0, container.bottom - window.innerHeight)
   if (delta) window.scrollBy({ top: delta, behavior: 'instant' })
@@ -331,32 +182,18 @@ const scrollMapIntoView = () => {
 const selectEvent = (event: MapEvent, options: { reveal?: boolean } = {}) => {
   scrollMapIntoView()
   updatePanelInset()
-  const previous = selectedEvent.value
-  if (previous && previous.id !== event.id) markers.get(previous.id)?.setIcon(makeIcon(previous, false))
   selectedEvent.value = event
-  markers.get(event.id)?.setIcon(makeIcon(event, true))
-  if (options.reveal !== false) revealMarker(event)
+  if (options.reveal !== false) eventMap.value?.reveal(event.id)
 }
 
 const closeDetail = () => {
-  const previous = selectedEvent.value
   selectedEvent.value = null
-  if (previous) markers.get(previous.id)?.setIcon(makeIcon(previous, false))
 }
 
-// Selecting an event in the panel: show its marker (opening a cluster if needed), then keep it clear of the panel
+// Selecting an event in the panel: show its marker (zooming out of a cluster if needed), then keep it clear of the panel
 const goToEvent = (event: MapEvent) => {
   selectEvent(event, { reveal: false })
-  const map = mapInstance.value
-  const marker = markers.get(event.id)
-  if (!map || !marker) return
-  const move = () => {
-    map.once('moveend', () => revealMarker(event))
-    map.panTo(marker.getLatLng())
-    revealMarker(event)
-  }
-  if (markerLayer?.zoomToShowLayer) markerLayer.zoomToShowLayer(marker, move)
-  else move()
+  eventMap.value?.goTo(event.id)
 }
 
 const focusPerson = (personId: string) => {
@@ -368,54 +205,25 @@ const onKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && selectedEvent.value) closeDetail()
 }
 
-const handleResize = () => {
-  if (mapInstance.value) {
-    setTimeout(() => {
-      mapInstance.value.invalidateSize()
-    }, 100)
-  }
-}
-
 const importGedcom = () => {
   router.push('/gedcom')
 }
 
-// Watch for changes in filters and data
-watch([showBirth, showMarriage, showDeath, showOther, showMigration, showClusters, () => appSettings.settings.value.language], () => {
-  if (mapReady.value) updateMapMarkers()
-}, { deep: true })
-
-watch(() => filteredEvents.value, () => {
-  if (!mapReady.value) return
-  if (!fitted) fitted = fitToEvents()
-  updateMapMarkers()
-}, { deep: true })
-
-watch(() => gedcomStore.hasData.value, () => {
-  if (gedcomStore.hasData.value && mapReady.value) {
-    updateMapMarkers()
-  }
-}, { deep: true })
+// The selected person's event may have been filtered out
+watch(filteredEvents, (events) => {
+  if (selectedEvent.value && !events.some(event => event.id === selectedEvent.value!.id)) closeDetail()
+})
 
 onMounted(() => {
-  nextTick(() => {
-    initMap()
-  })
-  window.addEventListener('resize', handleResize)
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('scroll', onViewportChange, { passive: true })
   window.addEventListener('resize', onViewportChange)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('scroll', onViewportChange)
   window.removeEventListener('resize', onViewportChange)
-  if (mapInstance.value) {
-    mapInstance.value.remove()
-    mapInstance.value = null
-  }
 })
 </script>
 
@@ -485,6 +293,33 @@ onUnmounted(() => {
           </div>
         </div>
         
+        <div class="p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }" data-map-layers>
+          <h3 class="font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+            {{ t('map.layers.title') }}
+          </h3>
+          <div class="space-y-3 text-sm">
+            <label class="block font-medium">{{ t('map.layers.base') }}
+              <select v-model="appSettings.settings.value.map.baseLayer" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-base-layer>
+                <option v-for="layer in BASE_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }}</option>
+              </select>
+            </label>
+            <label class="block font-medium">{{ t('map.layers.historic') }}
+              <select v-model="appSettings.settings.value.map.historicLayer" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-historic-layer>
+                <option value="none">{{ t('map.layers.none') }}</option>
+                <option v-for="layer in HISTORIC_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }} ({{ layer.period }})</option>
+              </select>
+            </label>
+            <label v-if="mapSettings.historicLayer !== 'none'" class="block">
+              {{ t('map.layers.opacity') }}: {{ mapSettings.historicOpacity }} %
+              <input v-model.number="appSettings.settings.value.map.historicOpacity" type="range" min="0" max="100" step="5" class="mt-1 w-full" data-historic-opacity>
+            </label>
+            <label class="flex items-center cursor-pointer">
+              <input v-model="appSettings.settings.value.map.placeNames" type="checkbox" class="mr-3">
+              <span :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">{{ t('map.layers.names') }}</span>
+            </label>
+          </div>
+        </div>
+
         <div class="p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <h3 class="font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
             {{ t('map.statistics') }}
@@ -539,7 +374,25 @@ onUnmounted(() => {
           </div>
         </div>
         
-        <div id="map-container" class="h-[70vh] lg:h-[80vh] rounded-lg shadow-lg"></div>
+        <EventMap
+          id="map-container"
+          ref="eventMap"
+          class="h-[70vh] lg:h-[80vh] rounded-lg shadow-lg overflow-hidden"
+          :events="filteredEvents"
+          :selected-id="selectedEvent?.id ?? null"
+          :clusters="showClusters"
+          :migration="showMigration"
+          :default-zoom="zoom"
+          :base-layer="mapSettings.baseLayer"
+          :historic-layer="mapSettings.historicLayer"
+          :historic-opacity="mapSettings.historicOpacity"
+          :place-names="mapSettings.placeNames"
+          :event-style="eventStyle"
+          :describe="describeEvent"
+          @select="selectEvent"
+          @close="closeDetail"
+          @ready="mapReady = true"
+        />
         
         <MapPersonPanel
           v-if="selectedEvent"

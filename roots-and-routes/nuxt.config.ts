@@ -134,13 +134,6 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
-        { rel: 'stylesheet', href: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' },
-        { rel: 'stylesheet', href: 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css' },
-        { rel: 'stylesheet', href: 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css' },
-      ],
-      script: [
-        { src: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', defer: true },
-        { src: 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js', defer: true },
       ],
     },
   },
@@ -154,7 +147,6 @@ export default defineNuxtConfig({
   // CSS configuration
   css: [
     '~~/assets/css/main.css',
-    '~~/assets/css/leaflet.css',
   ],
 
 })

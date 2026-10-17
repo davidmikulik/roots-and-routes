@@ -1,10 +1,12 @@
 // User preferences. Stored in this browser's localStorage and saved automatically on every change.
+import { BASE_LAYER_IDS, HISTORIC_LAYER_IDS } from '~~/utils/map/layers'
 export type Language = 'en' | 'cs'
 export type TreeView = 'tree' | 'chart' | 'list'
 
 export interface AppSettings {
   language: Language
-  map: { defaultZoom: number; showClusters: boolean; showMigrationLines: boolean }
+  // baseLayer / historicLayer: ids from utils/map/layers.ts; historicOpacity 0–100 %
+  map: { defaultZoom: number; showClusters: boolean; showMigrationLines: boolean; baseLayer: string; historicLayer: string; historicOpacity: number; placeNames: boolean }
   tree: { defaultView: TreeView; maxGenerations: number; showDetails: boolean }
   data: { autoSave: boolean; backupOnImport: boolean; backupCount: number }
   privacy: { anonymousMode: boolean }
@@ -17,7 +19,7 @@ export const LANGUAGES: { value: Language; label: string }[] = [
 
 export const createDefaultSettings = (): AppSettings => ({
   language: 'en',
-  map: { defaultZoom: 7, showClusters: true, showMigrationLines: false },
+  map: { defaultZoom: 7, showClusters: true, showMigrationLines: false, baseLayer: 'osm', historicLayer: 'none', historicOpacity: 70, placeNames: false },
   tree: { defaultView: 'list', maxGenerations: 10, showDetails: true },
   data: { autoSave: true, backupOnImport: true, backupCount: 5 },
   privacy: { anonymousMode: false },
@@ -47,6 +49,10 @@ export const sanitizeSettings = (input: unknown): AppSettings => {
       defaultZoom: int(map.defaultZoom, defaults.map.defaultZoom, 1, 18),
       showClusters: bool(map.showClusters, defaults.map.showClusters),
       showMigrationLines: bool(map.showMigrationLines, defaults.map.showMigrationLines),
+      baseLayer: typeof map.baseLayer === 'string' && BASE_LAYER_IDS.includes(map.baseLayer) ? map.baseLayer : defaults.map.baseLayer,
+      historicLayer: typeof map.historicLayer === 'string' && HISTORIC_LAYER_IDS.includes(map.historicLayer) ? map.historicLayer : defaults.map.historicLayer,
+      historicOpacity: int(map.historicOpacity, defaults.map.historicOpacity, 0, 100),
+      placeNames: bool(map.placeNames, defaults.map.placeNames),
     },
     tree: {
       defaultView: tree.defaultView === 'tree' || tree.defaultView === 'chart' || tree.defaultView === 'list' ? tree.defaultView : defaults.tree.defaultView,

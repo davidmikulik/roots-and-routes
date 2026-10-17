@@ -9,9 +9,13 @@ const tokensMatch = (provided: string, expected: string): boolean =>
 
 // For endpoints that answer everybody but give the administrator more (GET /api/gedcom/get)
 export function isAdminRequest(event: H3Event): boolean {
+  return tokenMatchesAdmin((getHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, ''))
+}
+
+// For a token taken from somewhere other than the Authorization header (client-upload clientPayload)
+export function tokenMatchesAdmin(token: string): boolean {
   const expectedToken = getExpectedToken()
-  const providedToken = (getHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
-  return !!expectedToken && !!providedToken && tokensMatch(providedToken, expectedToken)
+  return !!expectedToken && !!token && tokensMatch(token, expectedToken)
 }
 
 export function requireAdminToken(event: H3Event): void {

@@ -2,6 +2,7 @@ import { requireAdminToken } from '~~/server/utils/adminAuth'
 import { saveKnownLocations } from '~~/server/utils/locationStorage'
 import { normalizeLocationName } from '~~/utils/gedcom/locations'
 import { parseArchiveMapUrl } from '~~/utils/gedcom/archiveMaps'
+import { sanitizeOverlay } from '~~/utils/map/overlay'
 import type { KnownLocation } from '~~/types/locations'
 
 export default defineEventHandler(async (event) => {
@@ -46,11 +47,24 @@ export default defineEventHandler(async (event) => {
         if (!archiveMaps.some(existing => existing.url === parsed.url)) archiveMaps.push({ url: parsed.url })
       }
     }
+    // Georeferenced scanned sheets the user uploaded
+    const overlays = []
+    if (entry.overlays !== undefined) {
+      if (!Array.isArray(entry.overlays) || entry.overlays.length > 20) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid overlays', message: `Invalid overlays of ${name}` })
+      }
+      for (const raw of entry.overlays) {
+        const overlay = sanitizeOverlay(raw)
+        if (!overlay) throw createError({ statusCode: 400, statusMessage: 'Invalid overlay', message: `Invalid overlay of ${name}` })
+        overlays.push(overlay)
+      }
+    }
     locations.push({
       name,
       latitude: pendingCoordinates ? null : latitude as number,
       longitude: pendingCoordinates ? null : longitude as number,
       ...(archiveMaps.length ? { archiveMaps } : {}),
+      ...(overlays.length ? { overlays } : {}),
     })
   }
 

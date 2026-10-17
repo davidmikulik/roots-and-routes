@@ -17,6 +17,10 @@ import XYZ from 'ol/source/XYZ'
 import WMTS from 'ol/source/WMTS'
 import TileWMS from 'ol/source/TileWMS'
 import WMTSTileGrid from 'ol/tilegrid/WMTS'
+import ImageLayer from 'ol/layer/Image'
+import Static from 'ol/source/ImageStatic'
+import Projection from 'ol/proj/Projection'
+import { addCoordinateTransforms } from 'ol/proj'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
@@ -27,7 +31,18 @@ import { register } from 'ol/proj/proj4'
 import { boundingExtent, getHeight, getWidth } from 'ol/extent'
 import proj4 from 'proj4'
 import type { MapEvent } from '~~/types/gedcom'
+import type { OverlayPoint } from '~~/types/locations'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
+import { affineFromPoints, applyAffine, invertAffine } from '~~/utils/map/affine'
+
+// A georeferenced overlay ready to draw: the image is already fetched as a blob: URL (private, needs the admin token)
+export interface ResolvedOverlay {
+  id: string
+  width: number
+  height: number
+  points: OverlayPoint[]
+  url: string
+}
 
 const props = defineProps<{
   events: MapEvent[]
@@ -39,6 +54,8 @@ const props = defineProps<{
   historicLayer: string
   historicOpacity: number
   placeNames: boolean
+  // Georeferenced uploaded sheets to draw (admin only); empty when not shown
+  overlays?: ResolvedOverlay[]
   eventStyle: (type: string) => { color: string; icon: string }
   // One line in the list of events at one spot ("Narození · J. S.")
   describe: (event: MapEvent) => string
@@ -115,6 +132,49 @@ const applyLayers = () => {
     layer.setOpacity(props.historicOpacity / 100)
   }
   namesLayer.setVisible(props.placeNames)
+}
+
+// --- georeferenced uploaded overlays -----------------------------------------------------------------------
+// One image layer per overlay, reprojected from the sheet's pixel space to web Mercator through the affine fitted
+// from the control points (a per-overlay pixel projection with custom transforms, see utils/map/affine.ts).
+const overlayLayers = new Map<string, { key: string; layer: ImageLayer<Static> }>()
+const buildOverlay = (overlay: ResolvedOverlay): ImageLayer<Static> | null => {
+  const forward = affineFromPoints(overlay.points)
+  if (!forward) return null
+  const inverse = invertAffine(forward)
+  if (!inverse) return null
+  // Image coordinates: x = column, y = -row (y up), so the pixel (px, py) is at (px, -py)
+  const code = `overlay:${overlay.id}:${Math.round(forward[0] * 1e6)}:${Math.round(forward[2])}`
+  const extent: [number, number, number, number] = [0, -overlay.height, overlay.width, 0]
+  const projection = new Projection({ code, units: 'pixels', extent })
+  addCoordinateTransforms('EPSG:3857', projection,
+    ([x, y]) => { const [px, py] = applyAffine(inverse, x, y); return [px, -py] },
+    ([ix, iy]) => applyAffine(forward, ix, -iy),
+  )
+  return new ImageLayer({
+    source: new Static({ url: overlay.url, projection, imageExtent: extent }),
+  })
+}
+
+const applyOverlays = () => {
+  if (!map) return
+  const wanted = props.overlays ?? []
+  const wantedIds = new Set(wanted.map(o => o.id))
+  for (const [id, entry] of overlayLayers) {
+    if (!wantedIds.has(id)) { map.removeLayer(entry.layer); overlayLayers.delete(id) }
+  }
+  for (const overlay of wanted) {
+    const key = `${overlay.url}|${JSON.stringify(overlay.points)}`
+    const existing = overlayLayers.get(overlay.id)
+    if (existing?.key === key) { existing.layer.setOpacity(props.historicOpacity / 100); continue }
+    if (existing) map.removeLayer(existing.layer)
+    const layer = buildOverlay(overlay)
+    if (!layer) continue
+    layer.setOpacity(props.historicOpacity / 100)
+    // Above base + historic, below the place names and the markers
+    map.getLayers().insertAt(baseLayers.size + historicLayers.size, layer)
+    overlayLayers.set(overlay.id, { key, layer })
+  }
 }
 
 // --- marker styles ------------------------------------------------------------------------------------------
@@ -337,6 +397,7 @@ onMounted(async () => {
     controls: defaultControls({ attributionOptions: { collapsible: true, collapsed: false } }),
   })
   applyLayers()
+  applyOverlays()
   applyClusters()
   updateEvents()
   fitted = fit()
@@ -358,6 +419,15 @@ onMounted(async () => {
         const feature = featureById.get(eventId)
         return feature ? map!.getPixelFromCoordinate(feature.getGeometry()!.getCoordinates()) : null
       },
+      // Builds one overlay layer directly (independent of props) and reports where it lands + whether its image loaded
+      testOverlay: (overlay: ResolvedOverlay) => new Promise((resolve) => {
+        const layer = buildOverlay(overlay)
+        if (!layer) return resolve({ built: false })
+        const source = layer.getSource()!
+        source.on('imageloadend', () => resolve({ built: true, loaded: true, projExtent: source.getProjection()!.getExtent() }))
+        source.on('imageloaderror', () => resolve({ built: true, loaded: false }))
+        map!.getLayers().insertAt(1, layer)
+      }),
     }
   }
   emit('ready')
@@ -376,6 +446,7 @@ watch(() => props.migration, updateLines)
 watch(() => props.clusters, applyClusters)
 watch(() => props.selectedId, () => eventsLayer.changed())
 watch(() => [props.baseLayer, props.historicLayer, props.historicOpacity, props.placeNames], applyLayers)
+watch(() => [props.overlays, props.historicOpacity], applyOverlays, { deep: true })
 watch(() => props.defaultZoom, () => { if (!props.events.length) map?.getView().setZoom(props.defaultZoom) })
 // Event styles depend on the language only through labels in the list, but the icons/colours are cached per type
 watch(() => props.eventStyle, () => { styleCache.clear(); eventsLayer.changed() })

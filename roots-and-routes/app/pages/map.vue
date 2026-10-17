@@ -56,8 +56,21 @@ const startYear = ref('')
 const endYear = ref('')
 
 const selectedEvent = ref<MapEvent | null>(null)
-// Archive map links of places in the detail panel (administrator only)
-useKnownLocations().autoLoad()
+// Archive map links in the detail panel and uploaded sheet overlays (administrator only)
+const knownLocations = useKnownLocations()
+knownLocations.autoLoad()
+
+// Uploaded georeferenced sheets, shown when "Vlastní listy" is the chosen historical map. Images are fetched with
+// the admin token, so only when the option is on.
+const resolvedOverlays = ref<{ id: string; width: number; height: number; points: { px: number; py: number; x: number; y: number }[]; url: string }[]>([])
+watch([() => mapSettings.value.historicLayer, () => knownLocations.locations.value], async ([layer]) => {
+  if (layer !== 'overlays' || !knownLocations.locations.value) { resolvedOverlays.value = []; return }
+  const all = knownLocations.locations.value.flatMap(location => location.overlays || [])
+  resolvedOverlays.value = await Promise.all(all.map(async overlay => ({
+    id: overlay.id, width: overlay.width, height: overlay.height, points: overlay.points, url: await knownLocations.overlayImageUrl(overlay.file),
+  })))
+}, { immediate: true })
+const hasOverlays = computed(() => (knownLocations.locations.value || []).some(location => location.overlays?.length))
 
 // Get map events from store
 const mapEvents = computed<MapEvent[]>(() => {
@@ -306,6 +319,7 @@ onUnmounted(() => {
             <label class="block font-medium">{{ t('map.layers.historic') }}
               <select v-model="appSettings.settings.value.map.historicLayer" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-historic-layer>
                 <option value="none">{{ t('map.layers.none') }}</option>
+                <option v-if="hasOverlays" value="overlays">{{ t('map.layer.overlays') }}</option>
                 <option v-for="layer in HISTORIC_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }} ({{ layer.period }})</option>
               </select>
             </label>
@@ -387,6 +401,7 @@ onUnmounted(() => {
           :historic-layer="mapSettings.historicLayer"
           :historic-opacity="mapSettings.historicOpacity"
           :place-names="mapSettings.placeNames"
+          :overlays="mapSettings.historicLayer === 'overlays' ? resolvedOverlays : []"
           :event-style="eventStyle"
           :describe="describeEvent"
           @select="selectEvent"

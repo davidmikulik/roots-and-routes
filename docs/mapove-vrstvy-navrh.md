@@ -1,6 +1,6 @@
 # Návrh: další mapové vrstvy (císařské otisky a další) a alternativa k Leafletu
 
-Stav k 17. 10. 2026. **Implementováno:** přechod na OpenLayers a přepínač vrstev (OSM, ZTM, ortofoto, II. a III. vojenské mapování, jihočeské císařské otisky, historické názvy), viz `app/components/EventMap.client.vue` a `utils/map/layers.ts`. Zbývá: vestavěná záložní mapa (úroveň A), vlastní podklady PMTiles (B, C) a georeferencování zakoupených listů. Adresy služeb, souřadnicové systémy a podmínky jsou ověřené dotazy na služby ten den (viz [Zdroje](#zdroje)). Služby se mění, před implementací je ověř znovu.
+Stav k 17. 10. 2026. **Implementováno:** přechod na OpenLayers a přepínač vrstev (OSM, ZTM, ortofoto, II. a III. vojenské mapování, jihočeské císařské otisky, historické názvy), viz `app/components/EventMap.client.vue` a `utils/map/layers.ts`. Georeferencování zakoupených listů **hotové** (nahrání k místu v Admin → Známá místa, umístění na mapu afinní transformací z kontrolních bodů, zobrazení volbou „Vlastní nahrané listy“). Zbývá: vestavěná záložní mapa (úroveň A) a vlastní podklady PMTiles (B, C). Adresy služeb, souřadnicové systémy a podmínky jsou ověřené dotazy na služby ten den (viz [Zdroje](#zdroje)). Služby se mění, před implementací je ověř znovu.
 
 ## 1. Výchozí stav
 

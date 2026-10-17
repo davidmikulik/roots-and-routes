@@ -19,8 +19,6 @@ import TileWMS from 'ol/source/TileWMS'
 import WMTSTileGrid from 'ol/tilegrid/WMTS'
 import ImageLayer from 'ol/layer/Image'
 import Static from 'ol/source/ImageStatic'
-import Projection from 'ol/proj/Projection'
-import { addCoordinateTransforms } from 'ol/proj'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
@@ -33,7 +31,7 @@ import proj4 from 'proj4'
 import type { MapEvent } from '~~/types/gedcom'
 import type { OverlayPoint } from '~~/types/locations'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
-import { affineFromPoints, applyAffine, invertAffine } from '~~/utils/map/affine'
+import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
 
 // A georeferenced overlay ready to draw: the image is already fetched as a blob: URL (private, needs the admin token)
 export interface ResolvedOverlay {
@@ -138,23 +136,8 @@ const applyLayers = () => {
 // One image layer per overlay, reprojected from the sheet's pixel space to web Mercator through the affine fitted
 // from the control points (a per-overlay pixel projection with custom transforms, see utils/map/affine.ts).
 const overlayLayers = new Map<string, { key: string; layer: ImageLayer<Static> }>()
-const buildOverlay = (overlay: ResolvedOverlay): ImageLayer<Static> | null => {
-  const forward = affineFromPoints(overlay.points)
-  if (!forward) return null
-  const inverse = invertAffine(forward)
-  if (!inverse) return null
-  // Image coordinates: x = column, y = -row (y up), so the pixel (px, py) is at (px, -py)
-  const code = `overlay:${overlay.id}:${Math.round(forward[0] * 1e6)}:${Math.round(forward[2])}`
-  const extent: [number, number, number, number] = [0, -overlay.height, overlay.width, 0]
-  const projection = new Projection({ code, units: 'pixels', extent })
-  addCoordinateTransforms('EPSG:3857', projection,
-    ([x, y]) => { const [px, py] = applyAffine(inverse, x, y); return [px, -py] },
-    ([ix, iy]) => applyAffine(forward, ix, -iy),
-  )
-  return new ImageLayer({
-    source: new Static({ url: overlay.url, projection, imageExtent: extent }),
-  })
-}
+const buildOverlay = (overlay: ResolvedOverlay): ImageLayer<Static> | null =>
+  createOverlayImageLayer(overlay.points, overlay.width, overlay.height, overlay.url)
 
 const applyOverlays = () => {
   if (!map) return

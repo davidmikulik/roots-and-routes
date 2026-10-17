@@ -153,4 +153,4 @@ export const NAMES_LAYER: WmsLayer = {
 }
 
 export const BASE_LAYER_IDS = BASE_LAYERS.map(layer => layer.id)
-export const HISTORIC_LAYER_IDS = ['none', ...HISTORIC_LAYERS.map(layer => layer.id)]
+export const HISTORIC_LAYER_IDS = ['none', 'overlays', ...HISTORIC_LAYERS.map(layer => layer.id)]

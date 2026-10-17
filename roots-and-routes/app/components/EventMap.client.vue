@@ -34,7 +34,7 @@ import type { MapEvent } from '~~/types/gedcom'
 import type { OverlayPoint } from '~~/types/locations'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
-import type { ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
+import type { ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 import { useT } from '~~/composables/useT'
 
 // A georeferenced overlay ready to draw: the image is already fetched as a blob: URL (private, needs the admin token)
@@ -61,8 +61,8 @@ const props = defineProps<{
   eventStyle: (type: string) => { color: string; icon: string }
   // One line in the list of events at one spot ("Narození · J. S.")
   describe: (event: MapEvent) => string
-  // Archive map sheets of a place (empty for visitors and in the anonymous mode)
-  archiveMapsFor?: (place?: string) => ParsedArchiveMap[]
+  // Links of a place, e.g. ČÚZK archive sheets (empty for visitors and in the anonymous mode)
+  archiveMapsFor?: (place?: string) => ParsedPlaceLink[]
 }>()
 const emit = defineEmits<{
   (event: 'select', value: MapEvent): void
@@ -298,7 +298,7 @@ const choose = (event: MapEvent) => {
 }
 
 // Archive map sheets of the places of these events, one group per place that has some
-type PlaceMaps = { place: string; maps: ParsedArchiveMap[] }
+type PlaceMaps = { place: string; maps: ParsedPlaceLink[] }
 const placeMaps = (events: MapEvent[]): PlaceMaps[] => {
   const mapsFor = props.archiveMapsFor
   if (!mapsFor) return []

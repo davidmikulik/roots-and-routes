@@ -4,7 +4,7 @@
 import type { KnownLocation, MapOverlay } from '~~/types/locations'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { normalizeLocationName } from '~~/utils/gedcom/locations'
-import { parseArchiveMapUrl, type ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
+import { parsePlaceLink, type ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 
 // Blob URLs of overlay images already fetched (with the admin token), kept for the whole session so a sheet is
 // fetched once whether it is shown on the map or opened in the editor
@@ -39,12 +39,12 @@ export const useKnownLocations = () => {
 
   const byName = computed(() => new Map((locations.value || []).map(location => [normalizeLocationName(location.name), location])))
 
-  // Archive map sheets of a place (empty for visitors, places without links and unknown places)
-  const archiveMapsFor = (place?: string): ParsedArchiveMap[] => {
+  // Links of a place (empty for visitors, places without links and unknown places)
+  const archiveMapsFor = (place?: string): ParsedPlaceLink[] => {
     if (!place) return []
     return (byName.value.get(normalizeLocationName(place))?.archiveMaps || [])
-      .map(map => parseArchiveMapUrl(map.url))
-      .filter((map): map is ParsedArchiveMap => !!map)
+      .map(map => parsePlaceLink(map.url, map.title))
+      .filter((map): map is ParsedPlaceLink => !!map)
   }
 
   // Uploads a scanned sheet (a bought copy) straight to the Blob store via a short-lived token, and reads its pixel

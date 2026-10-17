@@ -6,7 +6,7 @@ import { useT } from '~~/composables/useT'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import type { KnownLocation, MapOverlay, OverlayPoint } from '~~/types/locations'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
-import { parseArchiveMapUrl, type ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
+import { PLACE_LINK_MAX_TITLE, PLACE_LINK_MAX_URL, parsePlaceLink, type ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -30,23 +30,36 @@ const isImporting = ref(false)
 const getHeaders = () => adminAuth.authHeaders()
 const knownLocations = useKnownLocations()
 
-// Links to sheets in the ČÚZK archive viewer (císařské otisky, originální mapy…) for each place
-const archiveDrafts = ref(new Map<KnownLocation, string>())
-const archiveMapsOf = (location: KnownLocation): ParsedArchiveMap[] =>
-  (location.archiveMaps || []).map(map => parseArchiveMapUrl(map.url)).filter((map): map is ParsedArchiveMap => !!map)
-const addArchiveMap = (location: KnownLocation) => {
-  const parsed = parseArchiveMapUrl(archiveDrafts.value.get(location) || '')
+// Links of each place: any web address (ČÚZK archive sheets get a descriptive label) with an optional title.
+// Adding or removing a link saves the catalog right away, like the other changes would with "Save".
+type LinkDraft = { url: string; title: string }
+const linkDrafts = ref(new Map<KnownLocation, LinkDraft>())
+const linkDraft = (location: KnownLocation): LinkDraft => linkDrafts.value.get(location) || { url: '', title: '' }
+const setLinkDraft = (location: KnownLocation, change: Partial<LinkDraft>) => {
+  linkDrafts.value = new Map(linkDrafts.value).set(location, { ...linkDraft(location), ...change })
+}
+const archiveMapsOf = (location: KnownLocation): ParsedPlaceLink[] =>
+  (location.archiveMaps || []).map(map => parsePlaceLink(map.url, map.title)).filter((map): map is ParsedPlaceLink => !!map)
+const addArchiveMap = async (location: KnownLocation) => {
+  const draft = linkDraft(location)
+  const parsed = parsePlaceLink(draft.url, draft.title)
   if (!parsed) {
     errorMessage.value = t('locations.archive.invalid')
     return
   }
   errorMessage.value = ''
   const maps = location.archiveMaps || []
-  if (!maps.some(map => map.url === parsed.url)) location.archiveMaps = [...maps, { url: parsed.url }]
-  archiveDrafts.value = new Map(archiveDrafts.value).set(location, '')
+  if (maps.some(map => map.url === parsed.url)) {
+    errorMessage.value = t('locations.archive.duplicate')
+    return
+  }
+  location.archiveMaps = [...maps, { url: parsed.url, ...(parsed.title ? { title: parsed.title } : {}) }]
+  linkDrafts.value = new Map(linkDrafts.value).set(location, { url: '', title: '' })
+  await saveLocations()
 }
-const removeArchiveMap = (location: KnownLocation, index: number) => {
+const removeArchiveMap = async (location: KnownLocation, index: number) => {
   location.archiveMaps = (location.archiveMaps || []).filter((_, position) => position !== index)
+  await saveLocations()
 }
 
 // Uploaded georeferenced sheets
@@ -412,18 +425,31 @@ const handleImport = async (event: Event) => {
                   <input v-model="location.name" required maxlength="300" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.nameAria', { index: index + 1 })">
                   <span v-if="location.latitude === null && location.longitude === null" class="mt-1 block text-xs text-amber-700 dark:text-amber-300">{{ t('locations.table.coordsNeeded') }}</span>
                   <div class="mt-2" data-archive-maps>
+                    <p class="mb-0.5 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('locations.archive.label') }}</p>
                     <ArchiveMapLinks :maps="archiveMapsOf(location)" removable :show-source="false" @remove="removeArchiveMap(location, $event)" />
-                    <div class="mt-1 flex gap-2">
+                    <div class="mt-1 flex flex-wrap gap-2">
                       <input
-                        :value="archiveDrafts.get(location) || ''"
-                        @input="archiveDrafts = new Map(archiveDrafts).set(location, ($event.target as HTMLInputElement).value)"
+                        :value="linkDraft(location).url"
+                        @input="setLinkDraft(location, { url: ($event.target as HTMLInputElement).value })"
                         @keydown.enter.prevent="addArchiveMap(location)"
                         inputmode="url"
-                        class="min-w-0 flex-1 rounded border px-2 py-1 text-xs"
+                        :maxlength="PLACE_LINK_MAX_URL"
+                        class="min-w-[12rem] flex-[2] rounded border px-2 py-1 text-xs"
                         :placeholder="t('locations.archive.placeholder')"
                         :aria-label="t('locations.archive.aria', { name: location.name })"
+                        data-link-url
                       >
-                      <button type="button" class="rounded border px-2 py-1 text-xs" @click="addArchiveMap(location)">{{ t('locations.archive.add') }}</button>
+                      <input
+                        :value="linkDraft(location).title"
+                        @input="setLinkDraft(location, { title: ($event.target as HTMLInputElement).value })"
+                        @keydown.enter.prevent="addArchiveMap(location)"
+                        :maxlength="PLACE_LINK_MAX_TITLE"
+                        class="min-w-[8rem] flex-1 rounded border px-2 py-1 text-xs"
+                        :placeholder="t('locations.archive.titlePlaceholder')"
+                        :aria-label="t('locations.archive.titleAria', { name: location.name })"
+                        data-link-title
+                      >
+                      <button type="button" class="rounded border px-2 py-1 text-xs" :disabled="isSaving" @click="addArchiveMap(location)">{{ t('locations.archive.add') }}</button>
                     </div>
                   </div>
                   <div class="mt-2" data-overlays>

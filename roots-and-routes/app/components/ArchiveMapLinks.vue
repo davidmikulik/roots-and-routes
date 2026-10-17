@@ -1,19 +1,25 @@
 <script setup lang="ts">
-// Links to sheets of historical maps in the ČÚZK archive viewer (císařské otisky, originální mapy stabilního katastru).
-// The viewer cannot be embedded (X-Frame-Options: SAMEORIGIN), so every link opens it in a new tab. The source must be
-// cited when a reproduction is published, so it is shown under the links.
-import type { ParsedArchiveMap } from '~~/utils/gedcom/archiveMaps'
+// Links of a place (Admin → Known locations), each opens in a new tab. ČÚZK archive sheets (císařské otisky,
+// originální mapy stabilního katastru) are labelled by kind and sheet; the viewer cannot be embedded
+// (X-Frame-Options: SAMEORIGIN). The archive must be cited when a reproduction is published, so the source is shown
+// under the links when one of them is a ČÚZK sheet. Other links show their title, or the host without one.
+import type { ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 import type { MessageKey } from '~~/i18n'
 import { useT } from '~~/composables/useT'
 
-withDefaults(defineProps<{
-  maps: ParsedArchiveMap[]
+const props = withDefaults(defineProps<{
+  maps: ParsedPlaceLink[]
   removable?: boolean
   showSource?: boolean
 }>(), { removable: false, showSource: true })
 const emit = defineEmits<{ (event: 'remove', index: number): void }>()
 const { t } = useT()
-const typeLabel = (map: ParsedArchiveMap): string => t(`archive.type.${map.type}` as MessageKey)
+const label = (map: ParsedPlaceLink): string => {
+  if (map.title) return map.title
+  if (map.archive) return `${t(`archive.type.${map.archive.type}` as MessageKey)} · ${map.archive.sheet}`
+  return map.host
+}
+const hasArchive = computed(() => props.maps.some(map => map.archive))
 </script>
 
 <template>
@@ -24,18 +30,18 @@ const typeLabel = (map: ParsedArchiveMap): string => t(`archive.type.${map.type}
           :href="map.url"
           target="_blank"
           rel="noopener noreferrer"
-          :title="t('archive.openTitle')"
+          :title="map.archive ? t('archive.openTitle') : t('archive.openLink', { url: map.url })"
           class="min-w-0 break-words text-primary-700 underline dark:text-primary-300"
-        >🗺 {{ typeLabel(map) }} · {{ map.sheet }} ↗</a>
+        >{{ map.archive ? '🗺' : '🔗' }} {{ label(map) }} ↗</a>
         <button
           v-if="removable"
           type="button"
-          class="shrink-0 text-red-700 dark:text-red-300"
-          :aria-label="t('archive.remove', { sheet: map.sheet })"
+          class="shrink-0 rounded border border-red-300 px-1.5 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
+          :aria-label="t('archive.remove', { sheet: label(map) })"
           @click="emit('remove', index)"
-        >&times;</button>
+        >{{ t('archive.removeButton') }}</button>
       </li>
     </ul>
-    <p v-if="showSource" class="mt-0.5 opacity-60">{{ t('archive.source') }}</p>
+    <p v-if="showSource && hasArchive" class="mt-0.5 opacity-60">{{ t('archive.source') }}</p>
   </div>
 </template>

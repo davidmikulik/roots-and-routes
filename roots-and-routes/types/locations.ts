@@ -2,15 +2,18 @@ export interface KnownLocation {
   name: string
   latitude: number | null
   longitude: number | null
-  // Sheets of historical maps in the ČÚZK archive viewer (císařské otisky, originální mapy stabilního katastru…)
+  // Links about the place: any web page, ČÚZK archive sheets get a descriptive label (utils/gedcom/archiveMaps.ts).
+  // The field keeps its old name, the stored catalog uses it.
   archiveMaps?: ArchiveMap[]
   // Scanned map sheets the user uploaded (bought copies) and georeferenced onto the map
   overlays?: MapOverlay[]
 }
 
-// A link to one sheet in the ČÚZK archive viewer: https://ags.cuzk.gov.cz/archiv/openmap.html?typ=ciom&idrastru=…
+// A link of a place: any http(s) address, e.g. a sheet in the ČÚZK archive viewer
+// (https://ags.cuzk.gov.cz/archiv/openmap.html?typ=ciom&idrastru=…); the title is optional
 export interface ArchiveMap {
   url: string
+  title?: string
 }
 
 // A georeferenced scanned sheet. The image is in the private Blob store (media/<uuid>.<ext>); the control points

@@ -241,6 +241,12 @@ const openPersonEditor = (person?: AppPerson) => {
 
 const addEvent = () => personForm.value.events.push(createEmptyEventDraft())
 const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
+// Heading of an event in the editor: its type and its number among events of that type ("Bydliště 2")
+const eventHeading = (index: number): string => {
+  const type = personForm.value.events[index]!.type
+  const number = personForm.value.events.slice(0, index + 1).filter(event => event.type === type).length
+  return `${eventLabel(type)} ${number}`
+}
 
 // Links: any number, each with a required description; an image or document can be copied into the tree
 const addLink = () => personForm.value.links.push({ url: '', title: '' })
@@ -841,12 +847,12 @@ const deletePerson = async (person: AppPerson) => {
             <p v-if="!personForm.events.length" class="text-sm opacity-60 mb-3">{{ t('tree.field.noEvents') }}</p>
             <div v-for="(event, index) in personForm.events" :key="index" data-event-row class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
               <div class="sm:col-span-2 flex items-center justify-between">
-                <span class="text-sm font-medium opacity-70">{{ t('tree.field.eventNumber', { n: index + 1 }) }}</span>
+                <span class="text-sm font-medium opacity-70">{{ eventHeading(index) }}</span>
                 <button
                   type="button"
                   @click="removeEvent(index)"
                   class="text-sm text-red-700 dark:text-red-300 underline"
-                  :aria-label="t('tree.field.removeEvent', { n: index + 1 })"
+                  :aria-label="t('tree.field.removeEvent', { name: eventHeading(index) })"
                 >{{ t('tree.field.removeEventButton') }}</button>
               </div>
               <select v-model="event.type" class="rounded border px-3 py-2 bg-transparent">

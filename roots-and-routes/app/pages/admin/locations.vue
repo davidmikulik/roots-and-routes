@@ -4,7 +4,7 @@ import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
-import type { KnownLocation, MapOverlay, OverlayPoint } from '~~/types/locations'
+import type { KnownLocation } from '~~/types/locations'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 import { PLACE_LINK_MAX_TITLE, PLACE_LINK_MAX_URL, parsePlaceLink, type ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
 
@@ -59,61 +59,6 @@ const addArchiveMap = async (location: KnownLocation) => {
 }
 const removeArchiveMap = async (location: KnownLocation, index: number) => {
   location.archiveMaps = (location.archiveMaps || []).filter((_, position) => position !== index)
-  await saveLocations()
-}
-
-// Uploaded georeferenced sheets
-const uploadingFor = ref<KnownLocation | null>(null)
-// The error of the last upload, shown next to the place's button (the page-wide message is far up the table)
-const uploadError = ref<{ location: KnownLocation; message: string } | null>(null)
-const editor = ref<{ points: () => OverlayPoint[]; maxResidual: () => number } | null>(null)
-const overlayDialog = ref<{ location: KnownLocation; draft: MapOverlay; imageUrl: string } | null>(null)
-
-const startUpload = async (location: KnownLocation, event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  ;(event.target as HTMLInputElement).value = ''
-  if (!file) return
-  uploadingFor.value = location
-  errorMessage.value = ''
-  uploadError.value = null
-  try {
-    const { file: path, width, height } = await knownLocations.uploadOverlay(file)
-    const draft: MapOverlay = { id: crypto.randomUUID().slice(0, 8), file: path, title: location.name, source: '', width, height, points: [] }
-    overlayDialog.value = { location, draft, imageUrl: await knownLocations.overlayImageUrl(path) }
-  } catch (error: any) {
-    errorMessage.value = t('overlay.uploadFailed', { error: error?.data?.statusMessage || error?.message || '' })
-    uploadError.value = { location, message: errorMessage.value }
-  } finally {
-    uploadingFor.value = null
-  }
-}
-
-const editOverlay = async (location: KnownLocation, overlay: MapOverlay) => {
-  errorMessage.value = ''
-  try {
-    overlayDialog.value = { location, draft: { ...overlay, points: overlay.points.map(p => ({ ...p })) }, imageUrl: await knownLocations.overlayImageUrl(overlay.file) }
-  } catch (error: any) {
-    errorMessage.value = t('overlay.loadFailed', { error: error?.data?.statusMessage || error?.message || '' })
-  }
-}
-
-// Placing or removing a sheet saves the catalog right away, like the place links
-const saveOverlay = async () => {
-  const dialog = overlayDialog.value
-  if (!dialog || !editor.value) return
-  const points = editor.value.points()
-  if (points.length < 3) { errorMessage.value = t('overlay.needThree'); return }
-  if (!dialog.draft.title.trim()) { errorMessage.value = t('overlay.titleRequired'); return }
-  const overlay: MapOverlay = { ...dialog.draft, title: dialog.draft.title.trim(), source: dialog.draft.source?.trim() || undefined, points }
-  const list = dialog.location.overlays || []
-  const index = list.findIndex(o => o.id === overlay.id)
-  dialog.location.overlays = index >= 0 ? list.map(o => (o.id === overlay.id ? overlay : o)) : [...list, overlay]
-  overlayDialog.value = null
-  await saveLocations()
-}
-
-const removeOverlay = async (location: KnownLocation, index: number) => {
-  location.overlays = (location.overlays || []).filter((_, position) => position !== index)
   await saveLocations()
 }
 
@@ -459,20 +404,6 @@ const handleImport = async (event: Event) => {
                       <button type="button" class="rounded border px-2 py-1 text-xs" :disabled="isSaving" @click="addArchiveMap(location)">{{ t('locations.archive.add') }}</button>
                     </div>
                   </div>
-                  <div class="mt-2" data-overlays>
-                    <ul v-if="location.overlays?.length" class="mb-1 space-y-0.5 text-xs">
-                      <li v-for="(overlay, oi) in location.overlays" :key="overlay.id" class="flex items-center gap-2">
-                        <span class="opacity-80">🗺 {{ overlay.title }}</span>
-                        <button type="button" class="underline" @click="editOverlay(location, overlay)">{{ t('overlay.edit') }}</button>
-                        <button type="button" class="text-red-700 underline dark:text-red-300" @click="removeOverlay(location, oi)">{{ t('overlay.removeSheet') }}</button>
-                      </li>
-                    </ul>
-                    <label v-if="location.latitude !== null" class="inline-flex cursor-pointer items-center gap-2 text-xs underline" :class="{ 'opacity-50': uploadingFor === location }">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingFor === location" @change="startUpload(location, $event)">
-                      {{ uploadingFor === location ? t('overlay.uploading') : t('overlay.upload') }}
-                    </label>
-                    <p v-if="uploadError?.location === location" role="alert" class="mt-1 text-xs text-red-700 dark:text-red-300">{{ uploadError.message }}</p>
-                  </div>
                 </td>
                 <td class="px-4 py-2">
                   <input v-model.number="location.latitude" @paste="pasteCoordinates($event, location)" type="number" step="any" min="-90" max="90" class="w-full rounded border px-3 py-2" :aria-label="t('locations.table.latitudeAria', { name: location.name })" :placeholder="t('locations.table.pending')">
@@ -492,36 +423,5 @@ const handleImport = async (event: Event) => {
         </div>
       </section>
     </template>
-
-    <!-- Georeferencing dialog: place the uploaded sheet onto the current map -->
-    <div v-if="overlayDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="overlayDialog = null">
-      <div class="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-lg bg-white dark:bg-gray-800 p-5 shadow-xl">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-lg font-bold">{{ t('overlay.title') }} — {{ overlayDialog.location.name }}</h2>
-          <button type="button" class="text-2xl" :aria-label="t('tree.editor.close')" @click="overlayDialog = null">&times;</button>
-        </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
-          <label class="text-sm">{{ t('overlay.sheetTitle') }}
-            <input v-model="overlayDialog.draft.title" required class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('overlay.sheetTitlePlaceholder')">
-          </label>
-          <label class="text-sm">{{ t('overlay.sourceLabel') }}
-            <input v-model="overlayDialog.draft.source" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('overlay.sourcePlaceholder')">
-          </label>
-        </div>
-        <OverlayEditor
-          ref="editor"
-          :key="overlayDialog.draft.id"
-          :image-url="overlayDialog.imageUrl"
-          :width="overlayDialog.draft.width"
-          :height="overlayDialog.draft.height"
-          :center="overlayDialog.location.longitude !== null ? [overlayDialog.location.longitude, overlayDialog.location.latitude!] : null"
-          :initial-points="overlayDialog.draft.points"
-        />
-        <div class="mt-4 flex justify-end gap-3">
-          <button type="button" class="px-4 py-2 rounded border" @click="overlayDialog = null">{{ t('tree.cancel') }}</button>
-          <button type="button" class="px-4 py-2 rounded bg-primary-600 text-white disabled:opacity-50" @click="saveOverlay">{{ t('overlay.save') }}</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>

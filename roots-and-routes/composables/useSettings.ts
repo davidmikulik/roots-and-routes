@@ -1,11 +1,13 @@
 // User preferences. Stored in this browser's localStorage and saved automatically on every change.
 import { BASE_LAYER_IDS, HISTORIC_LAYER_IDS, LEGACY_HISTORIC_LAYER_IDS, OVERLAY_LAYER_IDS } from '~~/utils/map/layers'
+import { isCustomLayerId } from '~~/utils/map/mapLayers'
 
-// A stored historical layer id, with the former regional imprint choices mapped to the joined one
+// A stored historical layer id, with the former choices mapped to the current ones. A custom layer (custom:<id>)
+// is kept even when it does not exist (yet): the layers are loaded only for the administrator
 const historicLayerId = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined
   const id = LEGACY_HISTORIC_LAYER_IDS[value] ?? value
-  return HISTORIC_LAYER_IDS.includes(id) ? id : undefined
+  return HISTORIC_LAYER_IDS.includes(id) || isCustomLayerId(id) ? id : undefined
 }
 
 export type Language = 'en' | 'cs'

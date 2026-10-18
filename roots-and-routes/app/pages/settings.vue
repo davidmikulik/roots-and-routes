@@ -206,6 +206,12 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
           >
             {{ t('settings.general.locations') }}
           </NuxtLink>
+          <NuxtLink
+            to="/admin/layers"
+            class="mb-6 ml-3 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
+          >
+            {{ t('settings.general.layers') }}
+          </NuxtLink>
 
           <div class="space-y-6">
             <div>

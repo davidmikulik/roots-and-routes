@@ -37,7 +37,7 @@ import { register } from 'ol/proj/proj4'
 import { boundingExtent, getHeight, getWidth } from 'ol/extent'
 import proj4 from 'proj4'
 import type { MapEvent } from '~~/types/gedcom'
-import type { OverlayPoint } from '~~/types/locations'
+import type { ControlPoint } from '~~/types/mapLayers'
 import { BASE_LAYERS, HISTORIC_LAYERS, NAMES_LAYER, OVERLAY_LAYERS, type HistoricLayer, type WmsLayer, type WmtsLayer, type XyzLayer } from '~~/utils/map/layers'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
 import type { ParsedPlaceLink } from '~~/utils/gedcom/archiveMaps'
@@ -49,7 +49,7 @@ export interface ResolvedOverlay {
   id: string
   width: number
   height: number
-  points: OverlayPoint[]
+  points: ControlPoint[]
   url: string
 }
 
@@ -65,7 +65,7 @@ const props = defineProps<{
   placeNames: boolean
   // Ids of the transparent overlays switched on (cadastral map, RÚIAN)
   extraLayers?: string[]
-  // Georeferenced uploaded sheets to draw (admin only); empty when not shown
+  // Sheets of the chosen custom layer to draw (admin only); empty when not shown
   overlays?: ResolvedOverlay[]
   eventStyle: (type: string) => { color: string; icon: string }
   // One line in the list of events at one spot ("Narození · J. S.")

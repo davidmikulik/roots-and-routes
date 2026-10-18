@@ -194,8 +194,9 @@ export const HISTORIC_LAYERS: HistoricLayer[] = [
   },
 ]
 
-// Former separate choices of the regional imprints, kept in older settings
-export const LEGACY_HISTORIC_LAYER_IDS: Record<string, string> = { 'cio-jc': 'cio', 'cio-jmk': 'cio', 'cio-msk': 'cio' }
+// Former separate choices of the regional imprints, kept in older settings; "my uploaded sheets" became the custom
+// layer they were moved into (utils/map/mapLayers.ts, MIGRATED_LAYER_ID)
+export const LEGACY_HISTORIC_LAYER_IDS: Record<string, string> = { 'cio-jc': 'cio', 'cio-jmk': 'cio', 'cio-msk': 'cio', overlays: 'custom:uploaded' }
 
 // Transparent overlay with historical (e.g. German) place names
 export const NAMES_LAYER: WmsLayer = {
@@ -235,5 +236,6 @@ export const OVERLAY_LAYERS: WmsLayer[] = [
 ]
 
 export const BASE_LAYER_IDS = BASE_LAYERS.map(layer => layer.id)
-export const HISTORIC_LAYER_IDS = ['none', 'overlays', ...HISTORIC_LAYERS.map(layer => layer.id)]
+// Custom layers the administrator uploaded have ids custom:<id> (utils/map/mapLayers.ts)
+export const HISTORIC_LAYER_IDS = ['none', ...HISTORIC_LAYERS.map(layer => layer.id)]
 export const OVERLAY_LAYER_IDS = OVERLAY_LAYERS.map(layer => layer.id)

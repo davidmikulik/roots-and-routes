@@ -57,6 +57,7 @@ const pageTitle = computed(() => {
     case '/gedcom': return t('title.gedcom')
     case '/settings': return t('title.settings')
     case '/admin/locations': return t('title.locations')
+    case '/admin/layers': return t('title.layers')
     default: return t('app.name')
   }
 })

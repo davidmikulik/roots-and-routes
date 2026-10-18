@@ -5,10 +5,10 @@ import ImageLayer from 'ol/layer/Image'
 import Static from 'ol/source/ImageStatic'
 import Projection from 'ol/proj/Projection'
 import { addCoordinateTransforms } from 'ol/proj'
-import type { OverlayPoint } from '~~/types/locations'
+import type { ControlPoint } from '~~/types/mapLayers'
 import { affineFromPoints, applyAffine, invertAffine } from '~~/utils/map/affine'
 
-export function createOverlayImageLayer(points: OverlayPoint[], width: number, height: number, url: string): ImageLayer<Static> | null {
+export function createOverlayImageLayer(points: ControlPoint[], width: number, height: number, url: string): ImageLayer<Static> | null {
   const forward = affineFromPoints(points)
   if (!forward) return null
   const inverse = invertAffine(forward)

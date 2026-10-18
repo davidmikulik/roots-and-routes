@@ -16,9 +16,7 @@ function isKnownLocation(value: unknown): value is KnownLocation {
     && Math.abs(location.longitude) <= 180
   const validArchiveMaps = location.archiveMaps === undefined
     || (Array.isArray(location.archiveMaps) && location.archiveMaps.every(map => typeof map?.url === 'string'))
-  const validOverlays = location.overlays === undefined
-    || (Array.isArray(location.overlays) && location.overlays.every(overlay => typeof overlay?.file === 'string'))
-  return typeof location.name === 'string' && location.name.trim().length > 0 && (hasNoCoordinates || hasValidCoordinates) && validArchiveMaps && validOverlays
+  return typeof location.name === 'string' && location.name.trim().length > 0 && (hasNoCoordinates || hasValidCoordinates) && validArchiveMaps
 }
 
 export async function loadKnownLocations(): Promise<KnownLocation[]> {

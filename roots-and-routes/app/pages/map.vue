@@ -8,6 +8,10 @@ import { useT } from '~~/composables/useT'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { MessageKey } from '~~/i18n'
 import { BASE_LAYERS, HISTORIC_LAYERS, OVERLAY_LAYERS } from '~~/utils/map/layers'
+import { useMapLayers } from '~~/composables/useMapLayers'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { customLayerId, isCustomLayerId } from '~~/utils/map/mapLayers'
+import type { ResolvedOverlay } from '~/components/EventMap.client.vue'
 
 const { t } = useT()
 
@@ -56,23 +60,37 @@ const startYear = ref('')
 const endYear = ref('')
 
 const selectedEvent = ref<MapEvent | null>(null)
-// Archive map links in the detail panel and uploaded sheet overlays (administrator only)
+// Archive map links in the detail panel (administrator only)
 const knownLocations = useKnownLocations()
 knownLocations.autoLoad()
+const adminAuth = useAdminAuth()
 
-// Uploaded georeferenced sheets, shown when "Vlastní listy" is the chosen historical map. Images are fetched with
-// the admin token, so only when the option is on.
-const resolvedOverlays = ref<{ id: string; width: number; height: number; points: { px: number; py: number; x: number; y: number }[]; url: string }[]>([])
-watch([() => mapSettings.value.historicLayer, () => knownLocations.locations.value], async ([layer]) => {
-  if (layer !== 'overlays' || !knownLocations.locations.value) { resolvedOverlays.value = []; return }
-  const all = knownLocations.locations.value.flatMap(location => location.overlays || [])
-  resolvedOverlays.value = await Promise.all(all.map(async overlay => ({
-    id: overlay.id, width: overlay.width, height: overlay.height, points: overlay.points, url: await knownLocations.overlayImageUrl(overlay.file),
-  })))
+// Custom layers of uploaded sheets (Admin → Map layers), offered among the historical maps to the administrator.
+// Only layers with a sheet are offered; the images are fetched with the admin token, so only for the chosen layer.
+const mapLayers = useMapLayers()
+mapLayers.autoLoad()
+const customLayers = computed(() => (mapLayers.layers.value || []).filter(layer => layer.sheets.length))
+const chosenCustomLayer = computed(() => customLayers.value.find(layer => customLayerId(layer) === mapSettings.value.historicLayer) ?? null)
+// The select shows "none" for a custom layer that is not available (visitor, deleted layer); the setting stays, so
+// the layer comes back after logging in
+const historicChoice = computed({
+  get: () => (isCustomLayerId(mapSettings.value.historicLayer) && !chosenCustomLayer.value ? 'none' : mapSettings.value.historicLayer),
+  set: (value: string) => { appSettings.settings.value.map.historicLayer = value },
+})
+const resolvedOverlays = ref<ResolvedOverlay[]>([])
+let overlayRequest = 0
+watch(chosenCustomLayer, async (layer) => {
+  const request = ++overlayRequest
+  if (!layer) { resolvedOverlays.value = []; return }
+  try {
+    const sheets = await mapLayers.resolveSheets(layer)
+    if (request === overlayRequest) resolvedOverlays.value = sheets.map(sheet => ({ id: sheet.id, width: sheet.width, height: sheet.height, points: sheet.points, url: sheet.url }))
+  } catch (error) {
+    console.error('[MAP LAYERS] Sheet images could not be loaded:', error)
+  }
 }, { immediate: true })
 // Archive map sheets of a place for the list of events at one spot and the right-click popup; hidden with the places
 const archiveMapsFor = (place?: string) => (anon.enabled.value ? [] : knownLocations.archiveMapsFor(place))
-const hasOverlays = computed(() => (knownLocations.locations.value || []).some(location => location.overlays?.length))
 
 // Get map events from store
 const mapEvents = computed<MapEvent[]>(() => {
@@ -319,14 +337,17 @@ onUnmounted(() => {
               </select>
             </label>
             <label class="block font-medium">{{ t('map.layers.historic') }}
-              <select v-model="appSettings.settings.value.map.historicLayer" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-historic-layer>
+              <select v-model="historicChoice" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-historic-layer>
                 <option value="none">{{ t('map.layers.none') }}</option>
-                <option v-if="hasOverlays" value="overlays">{{ t('map.layer.overlays') }}</option>
+                <optgroup v-if="customLayers.length" :label="t('map.layers.custom')">
+                  <option v-for="layer in customLayers" :key="layer.id" :value="customLayerId(layer)">{{ layer.title }}</option>
+                </optgroup>
                 <option v-for="layer in HISTORIC_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }} ({{ layer.period }})</option>
               </select>
             </label>
+            <NuxtLink v-if="adminAuth.isAdmin.value" to="/admin/layers" class="inline-block text-xs underline" data-manage-layers>{{ t('map.layers.manageCustom') }}</NuxtLink>
             <p v-if="mapSettings.historicLayer === 'cio'" class="text-xs opacity-70">{{ t('map.layers.cioHint') }}</p>
-            <label v-if="mapSettings.historicLayer !== 'none'" class="block">
+            <label v-if="historicChoice !== 'none'" class="block">
               {{ t('map.layers.opacity') }}: {{ mapSettings.historicOpacity }} %
               <input v-model.number="appSettings.settings.value.map.historicOpacity" type="range" min="0" max="100" step="5" class="mt-1 w-full" data-historic-opacity>
             </label>
@@ -410,7 +431,7 @@ onUnmounted(() => {
           :historic-opacity="mapSettings.historicOpacity"
           :place-names="mapSettings.placeNames"
           :extra-layers="mapSettings.extraLayers"
-          :overlays="mapSettings.historicLayer === 'overlays' ? resolvedOverlays : []"
+          :overlays="resolvedOverlays"
           :event-style="eventStyle"
           :describe="describeEvent"
           :archive-maps-for="archiveMapsFor"

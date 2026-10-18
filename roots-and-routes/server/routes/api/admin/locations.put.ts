@@ -2,7 +2,7 @@ import { requireAdminToken } from '~~/server/utils/adminAuth'
 import { saveKnownLocations } from '~~/server/utils/locationStorage'
 import { normalizeLocationName } from '~~/utils/gedcom/locations'
 import { parsePlaceLink } from '~~/utils/gedcom/archiveMaps'
-import { sanitizeOverlay } from '~~/utils/map/overlay'
+import { loadMapLayers } from '~~/server/utils/mapLayerStorage'
 import type { KnownLocation } from '~~/types/locations'
 
 export default defineEventHandler(async (event) => {
@@ -48,27 +48,16 @@ export default defineEventHandler(async (event) => {
         if (!archiveMaps.some(existing => existing.url === parsed.url)) archiveMaps.push({ url: parsed.url, ...(parsed.title ? { title: parsed.title } : {}) })
       }
     }
-    // Georeferenced scanned sheets the user uploaded
-    const overlays = []
-    if (entry.overlays !== undefined) {
-      if (!Array.isArray(entry.overlays) || entry.overlays.length > 20) {
-        throw createError({ statusCode: 400, statusMessage: 'Invalid overlays', message: `Invalid overlays of ${name}` })
-      }
-      for (const raw of entry.overlays) {
-        const overlay = sanitizeOverlay(raw)
-        if (!overlay) throw createError({ statusCode: 400, statusMessage: 'Invalid overlay', message: `Invalid overlay of ${name}` })
-        overlays.push(overlay)
-      }
-    }
     locations.push({
       name,
       latitude: pendingCoordinates ? null : latitude as number,
       longitude: pendingCoordinates ? null : longitude as number,
       ...(archiveMaps.length ? { archiveMaps } : {}),
-      ...(overlays.length ? { overlays } : {}),
     })
   }
 
+  // The uploaded sheets of the places moved to the map layers; make sure they did before the catalog drops them
+  await loadMapLayers()
   await saveKnownLocations(locations)
   return { success: true, count: locations.length }
 })

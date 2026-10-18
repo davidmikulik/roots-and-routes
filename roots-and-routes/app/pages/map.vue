@@ -217,6 +217,21 @@ const focusPerson = (personId: string) => {
   if (event) goToEvent(event)
 }
 
+// "Choose the person" in the detail fills the person filter above the map (the map then shows only them)
+const choosePerson = (personId: string) => {
+  selectedPersonId.value = personId
+}
+
+// /map?person=<id> (from the detail in the graphical tree) chooses the person once the tree is loaded
+// Applied once per address, so a later reload of the tree does not undo the user clearing the choice
+const route = useRoute()
+let appliedPerson = ''
+watch([() => route.query.person, () => gedcomStore.state.value.file], ([person, file]) => {
+  if (typeof person !== 'string' || person === appliedPerson || !file?.individuals.has(person)) return
+  appliedPerson = person
+  selectedPersonId.value = person
+}, { immediate: true })
+
 const onKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && selectedEvent.value) closeDetail()
 }
@@ -435,6 +450,8 @@ onUnmounted(() => {
           @close="closeDetail"
           @select-event="goToEvent"
           @select-person="focusPerson"
+          :chosen="selectedPersonId === selectedEvent.personId"
+          @choose-person="choosePerson"
         />
       </div>
     </div>

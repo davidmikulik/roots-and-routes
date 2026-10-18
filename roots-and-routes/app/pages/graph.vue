@@ -189,6 +189,13 @@ const openMenu = (value: { id: string; x: number; y: number }) => { menu.value =
             @select-person="detailRelative"
           >
             <template #footer>
+              <!-- Visitors get no places, so the map would be empty for them -->
+              <NuxtLink
+                v-if="adminAuth.isAdmin.value"
+                :to="{ path: '/map', query: { person: detailId } }"
+                class="mt-4 inline-block text-sm font-medium text-primary-700 underline dark:text-primary-300"
+                data-choose-on-map
+              >{{ t('graph.detail.chooseOnMap') }}</NuxtLink>
               <PersonActions :editor="editor" :person-id="detailId" class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700" />
             </template>
           </PersonDetail>

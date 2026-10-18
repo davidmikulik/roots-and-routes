@@ -22,9 +22,8 @@ export function createEmptyDraft(): IndividualDraft {
   }
 }
 
-const formatDateInput = (date?: Date | null): string => date && !Number.isNaN(date.getTime())
-  ? date.toISOString().slice(0, 10)
-  : ''
+// Dates are edited as GEDCOM text ("1850", "ABT MAR 1850"), so a year or a month alone stays as precise as it was
+const dateText = (event?: GedcomEvent): string => event?.date?.raw?.trim() || ''
 const coordinate = (event: GedcomEvent | undefined, index: 0 | 1): string => event?.coordinates?.[index]?.toString() || ''
 
 // The editor's draft of an existing person (first parents' family, first partner)
@@ -38,11 +37,11 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
     surname: namePartsOf(birthNameOf(individual.names)).surname,
     marriedSurname: namePartsOf(marriedNameOf(individual.names)).surname,
     sex: individual.sex,
-    birthDate: formatDateInput(individual.birth?.date?.parsed),
+    birthDate: dateText(individual.birth),
     birthPlace: individual.birth?.place || '',
     birthLatitude: coordinate(individual.birth, 0),
     birthLongitude: coordinate(individual.birth, 1),
-    deathDate: formatDateInput(individual.death?.date?.parsed),
+    deathDate: dateText(individual.death),
     deathPlace: individual.death?.place || '',
     deathCause: individual.death?.cause || '',
     deathLatitude: coordinate(individual.death, 0),
@@ -51,12 +50,12 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
     fatherId: parentFamily?.husband || '',
     motherId: parentFamily?.wife || '',
     spouseId: firstPartner || '',
-    marriageDate: formatDateInput(partnerFamily?.marriage?.date?.parsed),
+    marriageDate: dateText(partnerFamily?.marriage),
     marriagePlace: partnerFamily?.marriage?.place || '',
     marriageLatitude: coordinate(partnerFamily?.marriage, 0),
     marriageLongitude: coordinate(partnerFamily?.marriage, 1),
     events: individual.events.map(event => ({
-      type: event.type, date: formatDateInput(event.date?.parsed), existingDate: event.date, place: event.place || '',
+      type: event.type, date: dateText(event), existingDate: event.date, place: event.place || '',
       latitude: coordinate(event, 0), longitude: coordinate(event, 1), description: event.description || '',
     })),
     links: linksOf(file, individual),

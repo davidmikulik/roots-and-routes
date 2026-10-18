@@ -1,7 +1,7 @@
 import { computed, effectScope, onMounted, watch } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
-import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
+import { parseGedcom, parseGedcomDate, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyCatalogToTree, applyKnownLocations, learnKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
 import { birthNameOf, formatPersonName, isMarriedName, joinNameParts, marriedNameOf, nameMatches, namePartsOf, normalizeText } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
@@ -241,21 +241,17 @@ const union = <T>(first: T[] = [], second: T[] = []): T[] => {
   return [...values.values()]
 }
 
-const toGedcomDate = (value: string): GedcomDate | undefined => {
-  if (!value) return undefined
-  const parsed = new Date(`${value}T00:00:00Z`)
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-  return {
-    raw: `${parsed.getUTCDate()} ${months[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`,
-    parsed,
-    day: parsed.getUTCDate(),
-    month: parsed.getUTCMonth(),
-    year: parsed.getUTCFullYear(),
-  }
+// The editor gives a date as GEDCOM text ("1850", "ABT MAR 1850", "4 MAR 1850", see GedcomDateInput.vue). An
+// unchanged text keeps the date as it was; an empty one removes it.
+const toGedcomDate = (value: string, existingDate?: GedcomDate): GedcomDate | undefined => {
+  const text = value.trim().replace(/\s+/g, ' ')
+  if (!text) return undefined
+  if (existingDate && existingDate.raw.trim().replace(/\s+/g, ' ') === text) return existingDate
+  return parseGedcomDate(text)
 }
 
 const createEvent = (type: GedcomEventType, date: string, place: string, latitude: string, longitude: string, description = '', existingDate?: GedcomDate, cause = ''): GedcomEvent | undefined => {
-  const gedcomDate = toGedcomDate(date) || existingDate
+  const gedcomDate = toGedcomDate(date, existingDate)
   const lat = Number(latitude)
   const lng = Number(longitude)
   const hasCoordinates = latitude !== '' && longitude !== '' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180

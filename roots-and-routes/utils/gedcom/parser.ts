@@ -587,6 +587,11 @@ class GedcomParser {
     }
   }
 
+  // The same reading of a date as in the import, for dates typed in the editor (parseGedcomDate below)
+  readDate(dateString: string): GedcomDate | undefined {
+    return this.parseDate(dateString.trim().replace(/\s+/g, ' '))
+  }
+
   private parseDate(dateString: string): GedcomDate | undefined {
     if (!dateString) return undefined
     
@@ -797,6 +802,11 @@ class GedcomParser {
 }
 
 // Main parse function
+/** A GEDCOM date text ("ABT MAR 1850") as GedcomDate, read like the import does; undefined for an empty text */
+export function parseGedcomDate(text: string): GedcomDate | undefined {
+  return new GedcomParser().readDate(text)
+}
+
 export function parseGedcom(content: string, options?: GedcomParseOptions): GedcomParseResult {
   const parser = new GedcomParser(options)
   return parser.parse(content)

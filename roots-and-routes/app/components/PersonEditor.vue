@@ -150,9 +150,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <option value="">{{ t('tree.sex.unknown') }}</option><option value="F">{{ t('tree.sex.female') }}</option><option value="M">{{ t('tree.sex.male') }}</option>
           </select>
         </label>
-        <label class="text-sm">{{ t('tree.field.birthDate') }}
-          <input v-model="form.birthDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-        </label>
+        <GedcomDateInput v-model="form.birthDate" :label="t('tree.field.birthDate')" class="sm:col-span-2" data-field-birth-date />
         <label class="text-sm sm:col-span-2">{{ t('tree.field.birthPlace') }}
           <input v-model="form.birthPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
@@ -162,10 +160,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <label class="text-sm">{{ t('tree.field.birthLongitude') }}
           <input v-model="form.birthLongitude" @paste="pasteCoordinates($event, form, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
-        <label class="text-sm">{{ t('tree.field.deathDate') }}
-          <input v-model="form.deathDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-        </label>
-        <label class="text-sm">{{ t('tree.field.deathPlace') }}
+        <GedcomDateInput v-model="form.deathDate" :label="t('tree.field.deathDate')" class="sm:col-span-2" data-field-death-date />
+        <label class="text-sm sm:col-span-2">{{ t('tree.field.deathPlace') }}
           <input v-model="form.deathPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
         <label class="text-sm sm:col-span-2">{{ t('tree.field.deathCause') }}
@@ -196,9 +192,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           </select>
         </label>
         <div v-if="form.spouseId" class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-          <label class="text-sm">{{ t('tree.field.marriageDate') }}
-            <input v-model="form.marriageDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
+          <GedcomDateInput v-model="form.marriageDate" :label="t('tree.field.marriageDate')" class="sm:col-span-2" data-field-marriage-date />
           <label class="text-sm">{{ t('tree.field.marriagePlace') }}
             <input v-model="form.marriagePlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
@@ -227,7 +221,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <select v-model="event.type" class="rounded border px-3 py-2 bg-transparent">
               <option v-for="type in eventTypeOptions" :key="type" :value="type">{{ eventLabel(type) }}</option>
             </select>
-            <input v-model="event.date" type="date" class="rounded border px-3 py-2 bg-transparent" :aria-label="t('tree.field.eventDate')">
+            <GedcomDateInput v-model="event.date" :label="t('tree.field.eventDate')" class="sm:col-span-2" data-field-event-date />
             <input v-model="event.place" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.place')">
             <input v-model="event.description" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.description')">
             <input v-model="event.latitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.latitude')">

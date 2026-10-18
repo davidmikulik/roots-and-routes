@@ -9,6 +9,7 @@ import { useKnownLocations } from '~~/composables/useKnownLocations'
 import type { MessageKey } from '~~/i18n'
 import { BASE_LAYERS, HISTORIC_LAYERS, OVERLAY_LAYERS } from '~~/utils/map/layers'
 import { useMapLayers } from '~~/composables/useMapLayers'
+import { EVENT_STYLES, eventStyle as eventStyleOf, type EventCategory } from '~~/utils/gedcom/eventStyles'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { customLayerId, isCustomLayerId } from '~~/utils/map/mapLayers'
 import type { ResolvedOverlay } from '~/components/EventMap.client.vue'
@@ -97,31 +98,9 @@ const mapEvents = computed<MapEvent[]>(() => {
   return gedcomStore.getMapEvents()
 })
 
-const eventTypeConfig = {
-  BIRT: { color: '#22c55e', icon: '👶', category: 'birth' },
-  CHR: { color: '#22c55e', icon: '👶', category: 'birth' },
-  BAPM: { color: '#22c55e', icon: '👶', category: 'birth' },
-  DEAT: { color: '#ef4444', icon: '⚰️', category: 'death' },
-  BURI: { color: '#ef4444', icon: '⚰️', category: 'death' },
-  CREM: { color: '#ef4444', icon: '⚰️', category: 'death' },
-  MARR: { color: '#3b82f6', icon: '💍', category: 'marriage' },
-  DIV: { color: '#9333ea', icon: '💔', category: 'marriage' },
-  ENGA: { color: '#3b82f6', icon: '💍', category: 'marriage' },
-  CENS: { color: '#f59e0b', icon: '📄', category: 'other' },
-  RESI: { color: '#06b6d4', icon: '🏠', category: 'other' },
-  OCCU: { color: '#64748b', icon: '💼', category: 'other' },
-  EDUC: { color: '#8b5cf6', icon: '🎓', category: 'other' },
-  EMIG: { color: '#10b981', icon: '✈️', category: 'other' },
-  IMMI: { color: '#10b981', icon: '✈️', category: 'other' },
-  MILI: { color: '#ea580c', icon: '🎖️', category: 'other' },
-  RELI: { color: '#8b5cf6', icon: '⛪', category: 'other' },
-  EVEN: { color: '#9ca3af', icon: '⚪', category: 'other' },
-  FACT: { color: '#9ca3af', icon: '⚪', category: 'other' },
-}
-
 const eventLabel = (type: string) =>
-  type in eventTypeConfig ? t(`map.event.${type}` as MessageKey) : type
-const eventStyle = (type: string) => eventTypeConfig[type as keyof typeof eventTypeConfig] || { color: '#9ca3af', icon: '⚪' }
+  type in EVENT_STYLES ? t(`map.event.${type}` as MessageKey) : type
+const eventStyle = (type: string) => eventStyleOf(type)
 // A line in the list of events at one spot on the map
 const describeEvent = (event: MapEvent): string => {
   const person = gedcomStore.state.value.file?.individuals.get(event.personId)
@@ -129,8 +108,6 @@ const describeEvent = (event: MapEvent): string => {
   const year = anon.date(event.date || '').match(/\b\d{4}\b/)?.[0]
   return [eventLabel(event.type), year, name].filter(Boolean).join(' · ')
 }
-
-type EventCategory = 'birth' | 'marriage' | 'death' | 'other'
 
 const categoryFilters = computed<Record<EventCategory, boolean>>(() => ({
   birth: showBirth.value,
@@ -163,8 +140,8 @@ const filteredPersonIds = computed(() => {
 
 const filteredEvents = computed(() => {
   return mapEvents.value.filter(event => {
-    const config = eventTypeConfig[event.type as keyof typeof eventTypeConfig]
-    if (config && !categoryFilters.value[config.category as EventCategory]) return false
+    const config = EVENT_STYLES[event.type]
+    if (config && !categoryFilters.value[config.category]) return false
     if (filteredPersonIds.value && !filteredPersonIds.value.has(event.personId)) return false
     const yearText = event.date?.match(/\b(?:1[0-9]{3}|20[0-9]{2})\b/)?.[0]
     const year = yearText ? Number(yearText) : null
@@ -447,7 +424,6 @@ onUnmounted(() => {
           :person-id="selectedEvent.personId"
           :selected-id="selectedEvent.id"
           :events-by-person="eventsByPerson"
-          :event-label="eventLabel"
           @close="closeDetail"
           @select-event="goToEvent"
           @select-person="focusPerson"

@@ -239,6 +239,11 @@ const saveChanges = async () => {
 
 const errorText = (error: any): string => error?.data?.statusMessage || error?.message || t('tree.unknownError')
 
+// Right-click menu of a row: the same actions as the buttons (PersonActionsMenu.vue); "Detail" selects the person
+const menu = ref<{ person: AppPerson; x: number; y: number } | null>(null)
+const openMenu = (person: AppPerson, event: MouseEvent) => { menu.value = { person, x: event.clientX, y: event.clientY } }
+const detailById = (id: string) => selectById(id)
+
 // After saving in the editor the saved person is shown in the detail
 const onPersonSaved = (id: string) => {
   const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
@@ -441,6 +446,7 @@ const deletePerson = async (person: AppPerson) => {
                 'bg-primary-50 dark:bg-primary-900/20': selectedPerson?.id === person.id,
               }"
               @click="selectPerson(person)"
+              @contextmenu.prevent="openMenu(person, $event)"
             >
               <td class="p-4">
                 <div class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
@@ -546,7 +552,7 @@ const deletePerson = async (person: AppPerson) => {
             <h2 class="text-2xl font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               {{ anon.personName(selectedPerson) }}
             </h2>
-            <PersonRelationActions :editor="editor" :person-id="selectedPerson.id" class="mb-4" />
+            <PersonActions :editor="editor" :person-id="selectedPerson.id" class="mb-4" />
             
             <div v-if="treeSettings.showDetails" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
@@ -633,5 +639,17 @@ const deletePerson = async (person: AppPerson) => {
     </div>
 
     <PersonEditor v-if="editor.isOpen.value && adminAuth.isAdmin.value" :editor="editor" @saved="onPersonSaved" />
+    <PersonActionsMenu
+      v-if="menu"
+      :key="`${menu.person.id}-${menu.x}-${menu.y}`"
+      :editor="editor"
+      :person-id="menu.person.id"
+      :title="anon.personName(menu.person)"
+      :x="menu.x"
+      :y="menu.y"
+      detail
+      @detail="detailById"
+      @close="menu = null"
+    />
   </div>
 </template>

@@ -99,6 +99,21 @@ const saveChanges = async () => {
   }
 }
 
+// ---- Detail of a person (PersonDetail.vue, the same as on the map) and the right-click menu of a card, with the
+// same actions as the buttons above the canvas (composables/usePersonActions.ts)
+const detailId = ref('')
+const showDetail = (id: string) => { detailId.value = id }
+// A relative in the detail moves the tree to them and the detail follows
+const detailRelative = (id: string) => {
+  setRoot(id)
+  detailId.value = id
+}
+// Clicking a card while the detail is open shows the new person in the detail
+watch(rootId, (id) => { if (detailId.value) detailId.value = id })
+const relativeState = () => ({ active: true, title: t('graph.detail.moveTo') })
+
+const menu = ref<{ id: string; x: number; y: number } | null>(null)
+const openMenu = (value: { id: string; x: number; y: number }) => { menu.value = value }
 </script>
 
 <template>
@@ -170,7 +185,6 @@ const saveChanges = async () => {
       </div>
 
       <div
-        v-if="canEdit"
         class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
         data-graph-edit
       >
@@ -178,9 +192,9 @@ const saveChanges = async () => {
           <span class="opacity-70">{{ t('graph.edit.selected') }}</span>
           <strong class="ml-1">{{ currentLabel }}</strong>
         </span>
-        <PersonRelationActions :editor="editor" :person-id="rootId" />
+        <PersonActions :editor="editor" :person-id="rootId" detail @detail="showDetail" />
         <button
-          v-if="gedcomStore.state.value.dirty"
+          v-if="canEdit && gedcomStore.state.value.dirty"
           type="button"
           class="ml-auto rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-600"
           data-save-tree
@@ -188,22 +202,58 @@ const saveChanges = async () => {
         >{{ t('tree.saveToServer') }}</button>
       </div>
 
-      <FamilyTreeChart
-        class="h-[70vh] min-h-[320px] w-full"
-        :layout="layout"
-        :root-id="rootId"
-        :card-label="cardLabel"
-        @select="setRoot"
-      >
-        <template #card="{ node, isRoot }">
-          <TreePersonCard
-            v-bind="cardOf(node.id)"
-            :is-root="isRoot"
-            :has-more="node.hasSubTree"
-          />
-        </template>
-      </FamilyTreeChart>
+      <div class="relative">
+        <FamilyTreeChart
+          class="h-[70vh] min-h-[320px] w-full"
+          :layout="layout"
+          :root-id="rootId"
+          :card-label="cardLabel"
+          @select="setRoot"
+          @context="openMenu"
+        >
+          <template #card="{ node, isRoot }">
+            <TreePersonCard
+              v-bind="cardOf(node.id)"
+              :is-root="isRoot"
+              :has-more="node.hasSubTree"
+            />
+          </template>
+        </FamilyTreeChart>
+
+        <!-- Detail: a bottom sheet on phones, a card in the top left corner from `sm` up (the zoom buttons are on the right) -->
+        <aside
+          v-if="detailId && file?.individuals.has(detailId)"
+          class="absolute bottom-3 left-3 right-3 z-30 max-h-[60%] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-800 sm:bottom-auto sm:right-auto sm:top-3 sm:max-h-[calc(100%-1.5rem)] sm:w-96"
+          :aria-label="t('map.detail.title')"
+          data-graph-detail
+        >
+          <PersonDetail
+            :file="file"
+            :person-id="detailId"
+            :relative-state="relativeState"
+            @close="detailId = ''"
+            @select-person="detailRelative"
+          >
+            <template #footer>
+              <PersonActions :editor="editor" :person-id="detailId" class="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700" />
+            </template>
+          </PersonDetail>
+        </aside>
+      </div>
     </template>
+
+    <PersonActionsMenu
+      v-if="menu"
+      :key="`${menu.id}-${menu.x}-${menu.y}`"
+      :editor="editor"
+      :person-id="menu.id"
+      :title="cardOf(menu.id).name"
+      :x="menu.x"
+      :y="menu.y"
+      detail
+      @detail="showDetail"
+      @close="menu = null"
+    />
 
     <PersonEditor v-if="editor.isOpen.value && canEdit" :editor="editor" />
   </div>

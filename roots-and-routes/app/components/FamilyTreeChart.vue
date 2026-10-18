@@ -12,7 +12,11 @@ const props = defineProps<{
   /** Accessible name of a card */
   cardLabel: (id: string) => string
 }>()
-const emit = defineEmits<{ (event: 'select', id: string): void }>()
+const emit = defineEmits<{
+  (event: 'select', id: string): void
+  // Right click (or a long press, or the context menu key) on a person: the page opens its menu at x, y
+  (event: 'context', value: { id: string; x: number; y: number }): void
+}>()
 
 const { t } = useT()
 
@@ -116,6 +120,14 @@ const activate = (node: LayoutNode, event: Event) => {
   emit('select', node.id)
 }
 
+const openContext = (node: LayoutNode, event: MouseEvent) => {
+  if (isUnknownPartner(node.id)) return
+  // The context menu key gives no pointer position: open the menu at the card
+  const card = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const fromKeyboard = event.clientX === 0 && event.clientY === 0
+  emit('context', { id: node.id, x: fromKeyboard ? card.left + card.width / 2 : event.clientX, y: fromKeyboard ? card.bottom : event.clientY })
+}
+
 // Everyone in one family unit gets the same picture, so a new root must also move the view when no card changed place
 watch([signature, () => props.rootId], async () => {
   await nextTick()
@@ -195,6 +207,7 @@ const controlClass = 'grid h-9 w-9 place-items-center rounded-lg border border-g
         :class="isUnknownPartner(node.id) ? '' : 'cursor-pointer'"
         :style="{ left: `${cardX(node.left)}px`, top: `${cardY(node.top)}px`, width: `${CARD_WIDTH}px`, height: `${CARD_HEIGHT}px` }"
         @click="activate(node, $event)"
+        @contextmenu.prevent="openContext(node, $event)"
         @keydown.enter.prevent="activate(node, $event)"
         @keydown.space.prevent="activate(node, $event)"
       >

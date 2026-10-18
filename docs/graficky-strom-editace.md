@@ -17,10 +17,13 @@ s předem nastavenou vazbou k vybrané osobě. Všechny editační funkce v apli
 |---|---|
 | `composables/usePersonEditor.ts` | Stav editoru (otevřeno, koncept osoby, upravovaná osoba, popis vazby) a akce `openEdit(id)`, `openNew(relation?, anchorId?)`, `save()`. Volá se ve stránce, dostává instanci storu (komponenty `useGedcomStore()` volat nesmí). Obsahuje i převod osoby na koncept (`draftFromPerson`) a předvyplnění vazby (`relationDraft`). |
 | `app/components/PersonEditor.vue` | Dialog s formulářem (jméno, pohlaví, narození, úmrtí, rodiče, partner a sňatek, další události, odkazy a přílohy, poznámky). Vyčleněný beze změny chování z `tree.vue`. |
-| `app/components/PersonRelationActions.vue` | Řada tlačítek „Upravit · Přidat: otce, matku, partnera, dítě, sourozence“ pro jednu osobu. Používá ji grafický strom i detail osoby ve Stromu. |
+| `composables/usePersonActions.ts` | Jedna definice akcí nad osobou: Detail, Upravit, Přidat otce, matku, partnera, dítě, sourozence (dostupnost, vysvětlení, spuštění). |
+| `app/components/PersonActions.vue` | Akce jako řada tlačítek. Grafický strom (panel nad plátnem, patička detailu) a detail osoby ve Stromu. |
+| `app/components/PersonActionsMenu.vue` | Stejné akce jako menu na pravé tlačítko myši (na Androidu dlouhé podržení, klávesa kontextové nabídky): karta v grafickém stromu, řádek seznamu ve Stromu. |
+| `app/components/PersonDetail.vue` | Detail osoby (jméno, roky, události, rodiče, partneři, děti) pro mapu (`MapPersonPanel.vue`) i grafický strom. |
 
 Stránka zapojí editor takto: `const editor = usePersonEditor(gedcomStore)`, v šabloně
-`<PersonEditor :editor="editor" @saved="…" />` a `<PersonRelationActions :editor="editor" :person-id="…" />`.
+`<PersonEditor :editor="editor" @saved="…" />`, `<PersonActions :editor="editor" :person-id="…" detail @detail="…" />` a `<PersonActionsMenu …>`.
 
 ## Předvyplnění vazby
 
@@ -53,17 +56,20 @@ sňatek.
 
 ## Grafický strom
 
-- Nad plátnem je pro správce panel vybrané osoby (osoby uprostřed) s `PersonRelationActions` a tlačítkem
+- Nad plátnem je panel osoby uprostřed s `PersonActions` (Detail vidí každý, úpravy jen správce) a tlačítkem
   **Uložit na server**, když je vypnuté automatické ukládání a jsou neuložené změny (`state.dirty`).
 - Po uložení zůstává uprostřed původní osoba, nový příbuzný se objeví v rozložení kolem ní. Úprava osoby uprostřed
   se projeví hned na kartě.
 - Neznámého partnera (`unknown-…`, „Osoba není zapsána“) vybrat ani upravit nejde, není v GEDCOM.
 
+- Pravé tlačítko na kartě osoby otevře `PersonActionsMenu` se stejnými akcemi pro tuto osobu (nemusí být uprostřed).
+- **Detail** otevře `PersonDetail` v panelu nad plátnem (na telefonu dole, jinak vlevo nahoře). Klepnutí na příbuzného v detailu přesune strom na něj; v patičce detailu jsou akce pro správce.
+
 ## Stránka Strom
 
 - Vlastní formulář v `tree.vue` nahradí `PersonEditor` (stejná pole a chování, včetně odkazů, příloh a hlášení
   o přenosu souřadnic známých míst).
-- Detail vybrané osoby dostane `PersonRelationActions`, takže i tady jde přidat příbuzného s předvyplněnou vazbou.
+- Detail vybrané osoby dostane `PersonActions`, takže i tady jde přidat příbuzného s předvyplněnou vazbou.
 
 ## Ověření
 

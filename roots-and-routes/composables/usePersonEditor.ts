@@ -1,7 +1,7 @@
 // The person editor shared by the pages (Tree, Graphical tree), see docs/graficky-strom-editace.md: edit a person,
 // add a new one, or add a relative of a person with the relation filled in. The page passes its store instance:
 // components must not call useGedcomStore() (every call re-fetches the tree on mount).
-// The dialog is app/components/PersonEditor.vue, the buttons app/components/PersonRelationActions.vue.
+// The dialog is app/components/PersonEditor.vue, the actions app/components/PersonActions.vue (buttons) and PersonActionsMenu.vue (right-click menu).
 import type { GedcomEvent, GedcomFile, GedcomIndividual } from '~~/types/gedcom'
 import { linksOf, type IndividualDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
 import { useT } from '~~/composables/useT'

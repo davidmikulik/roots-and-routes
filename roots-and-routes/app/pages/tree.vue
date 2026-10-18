@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
-import { isStoredMedia, linksOf } from '~~/composables/useGedcomStore'
-import type { LinkDraft } from '~~/composables/useGedcomStore'
 import { usePersonEditor } from '~~/composables/usePersonEditor'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
@@ -207,42 +205,8 @@ const selectById = (xrefId: string) => {
   if (person) selectPerson(person)
 }
 
-const isWebAddress = (value: string) => /^https?:\/\/\S+$/i.test(value.trim())
 const openPersonEditor = (person?: AppPerson) => (person ? editor.openEdit(person.id) : editor.openNew())
 
-// Links of the selected person for the detail (visitors get none: the anonymized data have no links)
-const selectedLinks = computed(() => {
-  const file = gedcomStore.state.value.file
-  const individual = selectedPerson.value ? gedcomStore.individuals.value.get(selectedPerson.value.id) : undefined
-  return file && individual ? linksOf(file, individual) : []
-})
-
-// Attachments in the detail are ordinary links like the web links: they are private (admin token), so the files are
-// fetched when the detail shows them and linked as blob: URLs. Office documents get a file name and download.
-const attachmentUrls = ref(new Map<string, string>())
-const OPENS_IN_BROWSER = /\.(jpg|png|gif|webp|pdf|txt)$/
-const attachmentDownloadName = (link: LinkDraft): string | undefined =>
-  OPENS_IN_BROWSER.test(link.file || '') ? undefined : `${link.title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || 'document'}.${link.format || 'bin'}`
-const releaseAttachmentUrls = () => {
-  for (const url of attachmentUrls.value.values()) URL.revokeObjectURL(url)
-  attachmentUrls.value = new Map()
-}
-watch(() => selectedLinks.value.map(link => link.file).filter(isStoredMedia).join('|'), async (key) => {
-  releaseAttachmentUrls()
-  if (!key || !adminAuth.isAdmin.value) return
-  const urls = new Map<string, string>()
-  await Promise.all(key.split('|').map(async (path) => {
-    try {
-      urls.set(path, URL.createObjectURL(await gedcomStore.fetchStoredMedia(path)))
-    } catch (error) {
-      console.error(`[TREE] Attachment ${path} could not be loaded:`, error)
-    }
-  }))
-  // The detail may have moved on to another person meanwhile
-  if (key === selectedLinks.value.map(link => link.file).filter(isStoredMedia).join('|')) attachmentUrls.value = urls
-  else for (const url of urls.values()) URL.revokeObjectURL(url)
-})
-onUnmounted(releaseAttachmentUrls)
 
 const saveChanges = async () => {
   try {
@@ -631,35 +595,7 @@ const deletePerson = async (person: AppPerson) => {
               </div>
             </div>
 
-            <div v-if="selectedLinks.length" class="mt-4">
-              <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                {{ t('tree.links.title') }}
-              </div>
-              <ul class="space-y-1 text-sm">
-                <li v-for="link in selectedLinks" :key="link.id">
-                  <!-- A copy made from a web address keeps the address: description → address, then a link to the copy.
-                       A file pasted from the clipboard has no address: the description links to the copy. -->
-                  <template v-if="isStoredMedia(link.file)">
-                    <template v-if="isWebAddress(link.url)">
-                      <a :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
-                      <span class="opacity-60"> · </span>
-                    </template>
-                    <a
-                      v-if="attachmentUrls.get(link.file)"
-                      :href="attachmentUrls.get(link.file)"
-                      :download="attachmentDownloadName(link)"
-                      target="_blank"
-                      rel="noopener"
-                      data-attachment
-                      class="text-primary-700 dark:text-primary-300 underline break-all"
-                    >{{ isWebAddress(link.url) ? t('tree.links.attachment') : link.title }}</a>
-                    <span v-else class="text-primary-700 dark:text-primary-300 underline break-all opacity-60" :title="t('tree.links.loading')">{{ isWebAddress(link.url) ? t('tree.links.attachment') : link.title }}</span>
-                  </template>
-                  <a v-else-if="isWebAddress(link.url)" :href="link.url" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-300 underline break-all">{{ link.title }}</a>
-                  <span v-else class="break-all">{{ link.title }} ({{ link.url }})</span>
-                </li>
-              </ul>
-            </div>
+            <PersonLinks :file="gedcomStore.state.value.file" :person-id="selectedPerson.id" class="mt-4" />
           </div>
         </div>
       </div>

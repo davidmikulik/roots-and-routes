@@ -175,6 +175,8 @@ const avatar = computed(() => {
       </ul>
     </section>
 
+    <PersonLinks :file="file" :person-id="personId" compact class="mt-3" />
+
     <slot name="footer" />
   </div>
 </template>

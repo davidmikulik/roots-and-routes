@@ -16,7 +16,7 @@ type Store = ReturnType<typeof useGedcomStore>
 export function createEmptyDraft(): IndividualDraft {
   return {
     fullName: '', marriedName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
-    deathDate: '', deathPlace: '', deathLatitude: '', deathLongitude: '',
+    deathDate: '', deathPlace: '', deathCause: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
     marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
   }
@@ -43,6 +43,7 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
     birthLongitude: coordinate(individual.birth, 1),
     deathDate: formatDateInput(individual.death?.date?.parsed),
     deathPlace: individual.death?.place || '',
+    deathCause: individual.death?.cause || '',
     deathLatitude: coordinate(individual.death, 0),
     deathLongitude: coordinate(individual.death, 1),
     notes: individual.notes.join('\n'),

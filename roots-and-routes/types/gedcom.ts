@@ -233,6 +233,8 @@ export interface MapEvent {
   date?: string
   place?: string
   description?: string
+  // Cause of death (GEDCOM CAUS)
+  cause?: string
   coordinates: LngLat
   color: string
   icon: string

@@ -53,6 +53,8 @@ export interface IndividualDraft {
   birthLongitude: string
   deathDate: string
   deathPlace: string
+  // GEDCOM "2 CAUS" under DEAT
+  deathCause: string
   deathLatitude: string
   deathLongitude: string
   notes: string
@@ -251,13 +253,13 @@ const toGedcomDate = (value: string): GedcomDate | undefined => {
   }
 }
 
-const createEvent = (type: GedcomEventType, date: string, place: string, latitude: string, longitude: string, description = '', existingDate?: GedcomDate): GedcomEvent | undefined => {
+const createEvent = (type: GedcomEventType, date: string, place: string, latitude: string, longitude: string, description = '', existingDate?: GedcomDate, cause = ''): GedcomEvent | undefined => {
   const gedcomDate = toGedcomDate(date) || existingDate
   const lat = Number(latitude)
   const lng = Number(longitude)
   const hasCoordinates = latitude !== '' && longitude !== '' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
-  return gedcomDate || place || hasCoordinates || description
-    ? { type, date: gedcomDate, place: place || undefined, coordinates: hasCoordinates ? [lat, lng] : undefined, description: description || undefined }
+  return gedcomDate || place || hasCoordinates || description || cause.trim()
+    ? { type, date: gedcomDate, place: place || undefined, coordinates: hasCoordinates ? [lat, lng] : undefined, description: description || undefined, cause: cause.trim() || undefined }
     : undefined
 }
 
@@ -727,7 +729,7 @@ export const useGedcomStore = () => {
       names,
       sex: draft.sex,
       birth: createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date),
-      death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date),
+      death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date, draft.deathCause || ''),
       notes: draft.notes.split(/\r?\n/).map(note => note.trim()).filter(Boolean),
       multimediaLinks: saveLinks(file, xrefId, existing?.multimediaLinks || [], draft.links),
       events: draft.events.map(event => createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate)).filter((event): event is GedcomEvent => Boolean(event)),

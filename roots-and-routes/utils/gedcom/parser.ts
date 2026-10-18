@@ -412,9 +412,13 @@ class GedcomParser {
     }
   }
 
+  // Sub-lines of an event (the event is on level 1). DATE, PLAC, NOTE… count only directly under the event: deeper
+  // lines belong to something else, e.g. "2 SOUR" with "3 DATA / 4 DATE" (the date of the source, not of the event).
+  // Coordinates sit deeper (2 PLAC / 3 MAP / 4 LATI). Other tags (MyHeritage's _UID, RIN, _UPD…) are ignored.
   private processEventDetail(line: GedcomLine, event: GedcomEvent) {
     const tag = line.tag.toUpperCase()
     const value = line.value
+    if (line.level !== 2 && tag !== 'LATI' && tag !== 'LONG') return
     if (tag === 'DATE') event.date = this.parseDate(value)
     else if (tag === 'PLAC') event.place = value
     else if (tag === 'CAUS') event.cause = value
@@ -1321,6 +1325,7 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
           date: event.date?.raw || '',
           place: event.place || '',
           description: '',
+          cause: event.cause,
           coordinates,
           color: EVENT_COLORS[type] || '#9E9E9E',
           icon: EVENT_ICONS[type] || '⚪',
@@ -1342,6 +1347,7 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
           date: event.date?.raw || '',
           place: event.place || '',
           description: event.description || '',
+          cause: event.cause,
           coordinates,
           color: EVENT_COLORS[event.type] || '#9E9E9E',
           icon: EVENT_ICONS[event.type] || '⚪',

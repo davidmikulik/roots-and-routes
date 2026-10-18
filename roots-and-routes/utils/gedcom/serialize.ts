@@ -99,7 +99,22 @@ const cleanEventLineValue = (event?: GedcomEvent) => {
   if (!event) return
   if (event.date && event.date.raw === event.description && !/\b\d{4}\b/.test(event.date.raw)) delete event.date
   if (event.description === 'Y') event.description = ''
+  // Older imports also put values of MyHeritage's helper tags into events: record ids ("MH:I500003", RIN), unique
+  // ids ("68222EF534C001CE8E19260794201B0B", _UID) and the time of the last change ("12 OCT 2026 15:12:48 GMT -0500",
+  // _UPD). They are not dates or descriptions and are dropped.
+  if (event.date && !isPlausibleDate(event.date.raw)) delete event.date
+  if (event.description && isHelperValue(event.description)) event.description = ''
 }
+
+// MyHeritage record ids and unique ids
+const isHelperValue = (value: string): boolean => {
+  const text = value.trim()
+  return /^MH:[A-Z]{1,3}\d+$/i.test(text) || /^[0-9A-F]{32}$/i.test(text) || /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}$/i.test(text)
+}
+
+// Not a date: an id, or a time of day ("12 OCT 2026 15:12:48 GMT -0500" is a change stamp). Date phrases without a
+// year are kept.
+export const isPlausibleDate = (raw = ''): boolean => !/\d{1,2}:\d{2}/.test(raw) && !isHelperValue(raw)
 
 const cleanFamilyEvents = (families: Map<string, GedcomFamily>): Map<string, GedcomFamily> => {
   for (const family of families.values()) for (const event of [family.marriage, family.divorce, ...(family.engagements || [])]) cleanEventLineValue(event)

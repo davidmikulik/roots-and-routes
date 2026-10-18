@@ -13,7 +13,7 @@ import { eventStyle } from '~~/utils/gedcom/eventStyles'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 
 // One line in the list of events (the map passes its markers, otherwise all events of the person are listed)
-export interface DetailEvent { id: string; type: string; icon?: string; date?: string; place?: string; description?: string }
+export interface DetailEvent { id: string; type: string; icon?: string; date?: string; place?: string; description?: string; cause?: string }
 
 const props = defineProps<{
   file: GedcomFile | null
@@ -56,7 +56,7 @@ const ownEvents = computed<DetailEvent[]>(() => {
   }
   return list
     .filter((event): event is GedcomEvent => !!event)
-    .map((event, index) => ({ id: `${index}-${event.type}`, type: event.type, date: event.date?.raw, place: event.place, description: event.description }))
+    .map((event, index) => ({ id: `${index}-${event.type}`, type: event.type, date: event.date?.raw, place: event.place, description: event.description, cause: event.cause }))
 })
 
 const year = (text = ''): number => Number(text.match(/\b\d{4}\b/)?.[0]) || Number.POSITIVE_INFINITY
@@ -70,6 +70,8 @@ const knownLocations = useKnownLocations()
 const archiveMaps = (event: DetailEvent) => (anon.enabled.value ? [] : knownLocations.archiveMapsFor(event.place))
 // The description ("Švadlena" for an occupation) is personal data like the place: hidden in the anonymous mode
 const detailLine = (event: DetailEvent): string => [anon.place(event.description), dateText(event.date), anon.place(event.place)].filter(Boolean).join(' · ')
+// Cause of death on its own line ("Příčina: tuberkulóza"); hidden in the anonymous mode
+const causeLine = (event: DetailEvent): string => (event.cause && !anon.enabled.value ? t('map.detail.cause', { cause: event.cause }) : '')
 
 const GROUP_LABELS: Record<'parents' | 'partners' | 'children', MessageKey> = {
   parents: 'map.detail.parents',
@@ -144,6 +146,7 @@ const avatar = computed(() => {
             <span class="min-w-0 flex-1">
               <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">{{ eventLabel(event.type) }}</span>
               <span v-if="detailLine(event)" class="block break-words text-xs text-gray-600 dark:text-gray-300">{{ detailLine(event) }}</span>
+              <span v-if="causeLine(event)" class="block break-words text-xs text-gray-600 dark:text-gray-300" data-death-cause>{{ causeLine(event) }}</span>
             </span>
           </component>
           <ArchiveMapLinks :maps="archiveMaps(event)" class="ml-9 mt-0.5" />

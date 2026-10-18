@@ -160,6 +160,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <label class="text-sm">{{ t('tree.field.deathPlace') }}
           <input v-model="form.deathPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
+        <label class="text-sm sm:col-span-2">{{ t('tree.field.deathCause') }}
+          <input v-model="form.deathCause" maxlength="248" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.deathCausePlaceholder')" data-field-death-cause>
+        </label>
         <label class="text-sm">{{ t('tree.field.deathLatitude') }}
           <input v-model="form.deathLatitude" @paste="pasteCoordinates($event, form, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>

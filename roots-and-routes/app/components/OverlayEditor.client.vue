@@ -64,7 +64,7 @@ const fit = computed(() => (points.value.length >= MIN_POINTS ? affineFromPoints
 const pointResiduals = computed(() => (fit.value ? residuals(fit.value, points.value) : []))
 const maxResidual = computed(() => (pointResiduals.value.length ? Math.max(...pointResiduals.value) : 0))
 // The point that fits worst (worth checking first); only with more points than the minimum, where it can differ
-const worstIndex = computed(() => (points.value.length > MIN_POINTS && maxResidual.value > 0 ? pointResiduals.value.indexOf(maxResidual.value) : -1))
+const worstIndex = computed(() => (points.value.length > MIN_POINTS && maxResidual.value >= 1 ? pointResiduals.value.indexOf(maxResidual.value) : -1))
 const collinear = computed(() => points.value.length >= MIN_POINTS && !fit.value)
 const full = computed(() => points.value.length >= MAX_POINTS)
 
@@ -240,21 +240,20 @@ onUnmounted(() => {
         <div ref="sheetEl" class="h-80 w-full rounded border border-gray-300 dark:border-gray-600" data-sheet-map />
       </div>
       <div>
-        <div class="mb-1 flex min-h-7 flex-wrap items-center justify-between gap-2">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ t('overlay.map') }}</span>
-          <div class="flex flex-wrap items-center gap-2">
-            <template v-if="places?.length">
-              <input v-model="placeQuery" list="overlay-places" class="w-36 rounded border px-2 py-0.5 text-xs bg-transparent" :placeholder="t('overlay.goToPlace')" :aria-label="t('overlay.goToPlace')" data-go-to-place @change="goToPlace" @keydown.enter.prevent="goToPlace">
-              <datalist id="overlay-places">
-                <option v-for="place in places" :key="place.name" :value="place.name" />
-              </datalist>
-            </template>
-            <select v-model="baseLayerId" class="rounded border px-2 py-0.5 text-xs bg-transparent" :aria-label="t('map.layers.base')">
-              <option v-for="layer in BASE_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }}</option>
-            </select>
-          </div>
-        </div>
+        <div class="mb-1 flex min-h-7 items-center text-xs font-semibold uppercase tracking-wide opacity-60">{{ t('overlay.map') }}</div>
         <div ref="geoEl" class="h-80 w-full rounded border border-gray-300 dark:border-gray-600" data-geo-map />
+        <!-- Under the map, so the sheet and the map line up at the top and the bottom -->
+        <div class="mt-2 flex flex-wrap items-center gap-2" data-geo-controls>
+          <template v-if="places?.length">
+            <input v-model="placeQuery" list="overlay-places" class="w-40 rounded border px-2 py-0.5 text-xs bg-transparent" :placeholder="t('overlay.goToPlace')" :aria-label="t('overlay.goToPlace')" data-go-to-place @change="goToPlace" @keydown.enter.prevent="goToPlace">
+            <datalist id="overlay-places">
+              <option v-for="place in places" :key="place.name" :value="place.name" />
+            </datalist>
+          </template>
+          <select v-model="baseLayerId" class="w-auto rounded border px-2 py-0.5 text-xs bg-transparent" :aria-label="t('map.layers.base')">
+            <option v-for="layer in BASE_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }}</option>
+          </select>
+        </div>
       </div>
     </div>
 

@@ -2,9 +2,9 @@
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { isStoredMedia, linksOf } from '~~/composables/useGedcomStore'
-import type { IndividualDraft, LinkDraft } from '~~/composables/useGedcomStore'
+import type { LinkDraft } from '~~/composables/useGedcomStore'
+import { usePersonEditor } from '~~/composables/usePersonEditor'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
-import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
 import { useSettings } from '~~/composables/useSettings'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { messages, type MessageKey } from '~~/i18n'
@@ -44,10 +44,8 @@ if (!appSettings.ready.value) {
 const selectedPerson = ref<AppPerson | null>(null)
 const searchQuery = ref('')
 const rootPersonId = ref<string | null>(null)
-const editorOpen = ref(false)
-const editingPersonId = ref<string | null>(null)
-const personForm = ref<IndividualDraft>(createEmptyDraft())
-const eventTypeOptions = ['CHR', 'BAPM', 'BURI', 'CREM', 'DIV', 'ENGA', 'ADOP', 'CENS', 'RESI', 'OCCU', 'EDUC', 'RETI', 'EMIG', 'IMMI', 'MILI', 'RELI', 'EVEN', 'FACT'] as const
+// The person editor shared with the Graphical tree (app/components/PersonEditor.vue)
+const editor = usePersonEditor(gedcomStore)
 
 const eventLabel = (code: string): string => {
   const key = `tree.event.${code}`
@@ -79,17 +77,6 @@ const selectedArchiveMaps = computed(() => {
 const placeTip = (place: string): string => {
   if (anon.enabled.value) return t('tree.placeHidden')
   return place || t('tree.placeUnknown')
-}
-
-const createEmptyEventDraft = () => ({ type: 'EVEN' as const, date: '', place: '', latitude: '', longitude: '', description: '' })
-
-function createEmptyDraft(): IndividualDraft {
-  return {
-    fullName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
-    deathDate: '', deathPlace: '', deathLatitude: '', deathLongitude: '',
-    notes: '', fatherId: '', motherId: '', spouseId: '',
-    marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
-  }
 }
 
 // Get family tree from store
@@ -205,133 +192,8 @@ const selectById = (xrefId: string) => {
   if (person) selectPerson(person)
 }
 
-const formatDateInput = (date?: Date | null): string => date && !Number.isNaN(date.getTime())
-  ? date.toISOString().slice(0, 10)
-  : ''
-
-const openPersonEditor = (person?: AppPerson) => {
-  const individual = person ? gedcomStore.individuals.value.get(person.id) : undefined
-  const file = gedcomStore.state.value.file
-  const parentFamily = individual?.familiesAsChild.map((id: string) => file?.families.get(id)).find(Boolean)
-  const partnerFamily = individual?.familiesAsSpouse.map((id: string) => file?.families.get(id)).find(Boolean)
-  const firstPartner = partnerFamily
-    ? partnerFamily.husband === individual?.xrefId ? partnerFamily.wife : partnerFamily.husband
-    : ''
-  editingPersonId.value = individual?.xrefId || null
-  personForm.value = individual ? {
-    xrefId: individual.xrefId,
-    fullName: individual.names[0]?.full || '',
-    sex: individual.sex,
-    birthDate: formatDateInput(individual.birth?.date?.parsed),
-    birthPlace: individual.birth?.place || '',
-    birthLatitude: individual.birth?.coordinates?.[0]?.toString() || '',
-    birthLongitude: individual.birth?.coordinates?.[1]?.toString() || '',
-    deathDate: formatDateInput(individual.death?.date?.parsed),
-    deathPlace: individual.death?.place || '',
-    deathLatitude: individual.death?.coordinates?.[0]?.toString() || '',
-    deathLongitude: individual.death?.coordinates?.[1]?.toString() || '',
-    notes: individual.notes.join('\n'),
-    fatherId: parentFamily?.husband || '',
-    motherId: parentFamily?.wife || '',
-    spouseId: firstPartner || '',
-    marriageDate: formatDateInput(partnerFamily?.marriage?.date?.parsed),
-    marriagePlace: partnerFamily?.marriage?.place || '',
-    marriageLatitude: partnerFamily?.marriage?.coordinates?.[0]?.toString() || '',
-    marriageLongitude: partnerFamily?.marriage?.coordinates?.[1]?.toString() || '',
-    events: individual.events.map((event: GedcomEvent) => ({
-      type: event.type, date: formatDateInput(event.date?.parsed), existingDate: event.date, place: event.place || '',
-      latitude: event.coordinates?.[0]?.toString() || '', longitude: event.coordinates?.[1]?.toString() || '',
-      description: event.description || '',
-    })),
-    links: file ? linksOf(file, individual) : [],
-  } : createEmptyDraft()
-  copyingLinks.value = new Set()
-  editorOpen.value = true
-}
-
-const addEvent = () => personForm.value.events.push(createEmptyEventDraft())
-const removeEvent = (index: number) => personForm.value.events.splice(index, 1)
-// Heading of an event in the editor: its type and its number among events of that type ("Bydliště 2")
-const eventHeading = (index: number): string => {
-  const type = personForm.value.events[index]!.type
-  const number = personForm.value.events.slice(0, index + 1).filter(event => event.type === type).length
-  return `${eventLabel(type)} ${number}`
-}
-
-// Links: any number, each with a required description; an image or document can be copied into the tree
-const addLink = () => personForm.value.links.push({ url: '', title: '' })
-const removeLink = (index: number) => personForm.value.links.splice(index, 1)
-// A new address no longer matches the stored copy
-// A copy downloaded from the address no longer matches a new address; a pasted file stays
-const changeLinkUrl = (link: LinkDraft) => {
-  if (link.copiedFrom === undefined || link.url.trim() === link.copiedFrom) return
-  link.file = undefined
-  link.format = undefined
-  link.copiedFrom = undefined
-}
-const copyingLinks = ref(new Set<LinkDraft>())
-const copiedSizes = ref(new Map<LinkDraft, number>())
 const isWebAddress = (value: string) => /^https?:\/\/\S+$/i.test(value.trim())
-const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} kB`
-const copyLink = async (link: LinkDraft) => {
-  copyingLinks.value = new Set(copyingLinks.value).add(link)
-  try {
-    const copied = await gedcomStore.copyLinkToTree(link.url.trim())
-    link.file = copied.file
-    link.format = copied.format
-    link.copiedFrom = link.url.trim()
-    copiedSizes.value = new Map(copiedSizes.value).set(link, copied.size)
-  } catch (error) {
-    window.alert(t('tree.links.copyFailed', { error: errorText(error) }))
-  } finally {
-    const next = new Set(copyingLinks.value)
-    next.delete(link)
-    copyingLinks.value = next
-  }
-}
-
-// From the clipboard: the button reads an image (browsers give no other files to the clipboard API);
-// Ctrl+V in the link row also takes a document copied in a file manager
-const uploadToLink = async (link: LinkDraft, file: Blob, name: string) => {
-  copyingLinks.value = new Set(copyingLinks.value).add(link)
-  try {
-    const stored = await gedcomStore.uploadMediaToTree(file, name)
-    link.file = stored.file
-    link.format = stored.format
-    link.copiedFrom = undefined
-    copiedSizes.value = new Map(copiedSizes.value).set(link, stored.size)
-  } catch (error) {
-    window.alert(t('tree.links.copyFailed', { error: errorText(error) }))
-  } finally {
-    const next = new Set(copyingLinks.value)
-    next.delete(link)
-    copyingLinks.value = next
-  }
-}
-const pasteFromClipboard = async (link: LinkDraft) => {
-  try {
-    for (const item of await navigator.clipboard.read()) {
-      const type = item.types.find(candidate => candidate.startsWith('image/'))
-      if (type) return await uploadToLink(link, await item.getType(type), `clipboard.${type.split('/')[1]}`)
-    }
-  } catch (error) {
-    console.warn('[TREE] Clipboard read failed:', error)
-  }
-  window.alert(t('tree.links.clipboardEmpty'))
-}
-const pasteIntoLink = (event: ClipboardEvent, link: LinkDraft) => {
-  const file = event.clipboardData?.files?.[0]
-  if (!file) return
-  event.preventDefault()
-  void uploadToLink(link, file, file.name || 'clipboard')
-}
-const openCopy = async (path: string) => {
-  try {
-    await gedcomStore.openStoredMedia(path)
-  } catch (error) {
-    window.alert(errorText(error))
-  }
-}
+const openPersonEditor = (person?: AppPerson) => (person ? editor.openEdit(person.id) : editor.openNew())
 
 // Links of the selected person for the detail (visitors get none: the anonymized data have no links)
 const selectedLinks = computed(() => {
@@ -367,15 +229,6 @@ watch(() => selectedLinks.value.map(link => link.file).filter(isStoredMedia).joi
 })
 onUnmounted(releaseAttachmentUrls)
 
-// Pasting "lat, lng" into either coordinate field fills both fields
-const pasteCoordinates = (event: ClipboardEvent, target: Record<string, any>, latitudeKey: string, longitudeKey: string) => {
-  const pair = parseCoordinatePair(event.clipboardData?.getData('text') || '')
-  if (!pair) return
-  event.preventDefault()
-  target[latitudeKey] = String(pair[0])
-  target[longitudeKey] = String(pair[1])
-}
-
 const saveChanges = async () => {
   try {
     await gedcomStore.saveNow()
@@ -386,20 +239,10 @@ const saveChanges = async () => {
 
 const errorText = (error: any): string => error?.data?.statusMessage || error?.message || t('tree.unknownError')
 
-const savePerson = async () => {
-  if (!personForm.value.fullName.trim()) return
-  try {
-    const id = await gedcomStore.savePerson({ ...personForm.value, xrefId: editingPersonId.value || undefined })
-    const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
-    if (savedPerson) selectPerson(savedPerson)
-    editorOpen.value = false
-    // Changed coordinates were passed on to other people with the same place, or the catalog could not be updated
-    const sync = gedcomStore.lastLocationSync.value
-    if (sync?.error) window.alert(t('tree.locations.syncFailed', { error: sync.error }))
-    else if (sync?.propagated) window.alert(t('tree.locations.propagated', { n: sync.propagated }))
-  } catch (error) {
-    window.alert(t('tree.savingFailed', { error: errorText(error) }))
-  }
+// After saving in the editor the saved person is shown in the detail
+const onPersonSaved = (id: string) => {
+  const savedPerson = gedcomStore.getAllAppPersons().find(person => person.id === id)
+  if (savedPerson) selectPerson(savedPerson)
 }
 
 const deletePerson = async (person: AppPerson) => {
@@ -689,7 +532,6 @@ const deletePerson = async (person: AppPerson) => {
           ×
         </button>
         <div v-if="adminAuth.isAdmin.value" class="absolute top-4 right-14 flex gap-3 text-sm">
-          <button @click="openPersonEditor(selectedPerson)" class="underline">{{ t('tree.edit') }}</button>
           <button @click="deletePerson(selectedPerson)" class="text-red-600 underline">{{ t('tree.delete') }}</button>
         </div>
         
@@ -704,6 +546,7 @@ const deletePerson = async (person: AppPerson) => {
             <h2 class="text-2xl font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               {{ anon.name(selectedPerson.fullName) }}
             </h2>
+            <PersonRelationActions :editor="editor" :person-id="selectedPerson.id" class="mb-4" />
             
             <div v-if="treeSettings.showDetails" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
@@ -789,157 +632,6 @@ const deletePerson = async (person: AppPerson) => {
       </div>
     </div>
 
-    <div v-if="editorOpen && adminAuth.isAdmin.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="editorOpen = false">
-      <form class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl" @submit.prevent="savePerson">
-        <div class="flex items-center justify-between mb-5">
-          <h2 class="text-xl font-bold">{{ editingPersonId ? t('tree.editor.editTitle') : t('tree.editor.addTitle') }}</h2>
-          <button type="button" :aria-label="t('tree.editor.close')" @click="editorOpen = false" class="text-2xl">&times;</button>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label class="sm:col-span-2 text-sm">{{ t('tree.field.fullName') }}
-            <input v-model="personForm.fullName" required class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="name">
-          </label>
-          <label class="text-sm">{{ t('tree.field.sex') }}
-            <select v-model="personForm.sex" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-              <option value="">{{ t('tree.sex.unknown') }}</option><option value="F">{{ t('tree.sex.female') }}</option><option value="M">{{ t('tree.sex.male') }}</option>
-            </select>
-          </label>
-          <label class="text-sm">{{ t('tree.field.birthDate') }}
-            <input v-model="personForm.birthDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm sm:col-span-2">{{ t('tree.field.birthPlace') }}
-            <input v-model="personForm.birthPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.birthLatitude') }}
-            <input v-model="personForm.birthLatitude" @paste="pasteCoordinates($event, personForm, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.birthLongitude') }}
-            <input v-model="personForm.birthLongitude" @paste="pasteCoordinates($event, personForm, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.deathDate') }}
-            <input v-model="personForm.deathDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.deathPlace') }}
-            <input v-model="personForm.deathPlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.deathLatitude') }}
-            <input v-model="personForm.deathLatitude" @paste="pasteCoordinates($event, personForm, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.deathLongitude') }}
-            <input v-model="personForm.deathLongitude" @paste="pasteCoordinates($event, personForm, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-          </label>
-          <label class="text-sm">{{ t('tree.field.father') }}
-            <select v-model="personForm.fatherId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-              <option value="">{{ t('tree.field.notRecorded') }}</option>
-              <option v-for="person in allPeople" :key="person.id" :value="person.id" :disabled="person.id === editingPersonId">{{ person.fullName }}</option>
-            </select>
-          </label>
-          <label class="text-sm">{{ t('tree.field.mother') }}
-            <select v-model="personForm.motherId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-              <option value="">{{ t('tree.field.notRecorded') }}</option>
-              <option v-for="person in allPeople" :key="person.id" :value="person.id" :disabled="person.id === editingPersonId">{{ person.fullName }}</option>
-            </select>
-          </label>
-          <label class="text-sm sm:col-span-2">{{ t('tree.field.partner') }}
-            <select v-model="personForm.spouseId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-              <option value="">{{ t('tree.field.none') }}</option>
-              <option v-for="person in allPeople" :key="person.id" :value="person.id" :disabled="person.id === editingPersonId">{{ person.fullName }}</option>
-            </select>
-          </label>
-          <div v-if="personForm.spouseId" class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <label class="text-sm">{{ t('tree.field.marriageDate') }}
-              <input v-model="personForm.marriageDate" type="date" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-            </label>
-            <label class="text-sm">{{ t('tree.field.marriagePlace') }}
-              <input v-model="personForm.marriagePlace" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-            </label>
-            <label class="text-sm">{{ t('tree.field.marriageLatitude') }}
-              <input v-model="personForm.marriageLatitude" @paste="pasteCoordinates($event, personForm, 'marriageLatitude', 'marriageLongitude')" type="number" step="any" min="-90" max="90" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-            </label>
-            <label class="text-sm">{{ t('tree.field.marriageLongitude') }}
-              <input v-model="personForm.marriageLongitude" @paste="pasteCoordinates($event, personForm, 'marriageLatitude', 'marriageLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-            </label>
-          </div>
-          <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <div class="flex items-center justify-between mb-3">
-              <legend class="font-medium">{{ t('tree.field.otherEvents') }}</legend>
-            </div>
-            <p v-if="!personForm.events.length" class="text-sm opacity-60 mb-3">{{ t('tree.field.noEvents') }}</p>
-            <div v-for="(event, index) in personForm.events" :key="index" data-event-row class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
-              <div class="sm:col-span-2 flex items-center justify-between">
-                <span class="text-sm font-medium opacity-70">{{ eventHeading(index) }}</span>
-                <button
-                  type="button"
-                  @click="removeEvent(index)"
-                  class="text-sm text-red-700 dark:text-red-300 underline"
-                  :aria-label="t('tree.field.removeEvent', { name: eventHeading(index) })"
-                >{{ t('tree.field.removeEventButton') }}</button>
-              </div>
-              <select v-model="event.type" class="rounded border px-3 py-2 bg-transparent">
-                <option v-for="type in eventTypeOptions" :key="type" :value="type">{{ eventLabel(type) }}</option>
-              </select>
-              <input v-model="event.date" type="date" class="rounded border px-3 py-2 bg-transparent" :aria-label="t('tree.field.eventDate')">
-              <input v-model="event.place" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.place')">
-              <input v-model="event.description" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.description')">
-              <input v-model="event.latitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.latitude')">
-              <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.longitude')">
-            </div>
-            <button type="button" @click="addEvent" class="mt-3 text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.field.addEvent') }}</button>
-          </fieldset>
-          <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <div class="flex items-center justify-between mb-3">
-              <legend class="font-medium">{{ t('tree.links.title') }}</legend>
-              <button type="button" @click="addLink" class="text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.links.add') }}</button>
-            </div>
-            <div v-for="(link, index) in personForm.links" :key="index" data-link-row @paste="pasteIntoLink($event, link)" class="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-b border-gray-100 dark:border-gray-700">
-              <input
-                v-model="link.url"
-                @input="changeLinkUrl(link)"
-                inputmode="url"
-                :required="!isStoredMedia(link.file)"
-                class="rounded border px-3 py-2 bg-transparent"
-                :placeholder="t('tree.links.url')"
-                :aria-label="t('tree.links.url')"
-              >
-              <div class="flex gap-2">
-                <input v-model="link.title" required class="min-w-0 flex-1 rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.links.description')" :aria-label="t('tree.links.description')">
-                <button type="button" @click="removeLink(index)" class="px-3 text-red-600" :aria-label="t('tree.links.remove', { n: index + 1 })">&times;</button>
-              </div>
-              <div class="sm:col-span-2 flex flex-wrap items-center gap-3 text-sm">
-                <template v-if="isStoredMedia(link.file)">
-                  <span class="text-green-700 dark:text-green-400">
-                    📎 {{ copiedSizes.get(link) ? t('tree.links.stored', { format: (link.format || '').toUpperCase(), size: formatSize(copiedSizes.get(link)!) }) : t('tree.links.storedShort') }}
-                  </span>
-                  <button type="button" @click="openCopy(link.file!)" class="underline">{{ t('tree.links.openCopy') }}</button>
-                </template>
-                <HoverTip v-else :text="t('tree.links.copyHint')">
-                  <button
-                    type="button"
-                    @click="copyLink(link)"
-                    :disabled="!isWebAddress(link.url) || copyingLinks.has(link)"
-                    class="px-3 py-1 rounded border disabled:opacity-50"
-                  >{{ copyingLinks.has(link) ? t('tree.links.copying') : t('tree.links.copy') }}</button>
-                </HoverTip>
-                <HoverTip :text="t('tree.links.pasteHint')">
-                  <button
-                    type="button"
-                    @click="pasteFromClipboard(link)"
-                    :disabled="copyingLinks.has(link)"
-                    class="px-3 py-1 rounded border disabled:opacity-50"
-                  >{{ t('tree.links.paste') }}</button>
-                </HoverTip>
-              </div>
-            </div>
-          </fieldset>
-          <label class="text-sm sm:col-span-2">{{ t('tree.field.notes') }}
-            <textarea v-model="personForm.notes" rows="3" class="mt-1 w-full rounded border px-3 py-2 bg-transparent"></textarea>
-          </label>
-        </div>
-        <div class="flex justify-end gap-3 mt-6">
-          <button type="button" @click="editorOpen = false" class="px-4 py-2 rounded border">{{ t('tree.cancel') }}</button>
-          <button type="submit" class="px-4 py-2 rounded bg-primary-600 text-white">{{ t('tree.savePerson') }}</button>
-        </div>
-      </form>
-    </div>
+    <PersonEditor v-if="editor.isOpen.value && adminAuth.isAdmin.value" :editor="editor" @saved="onPersonSaved" />
   </div>
 </template>

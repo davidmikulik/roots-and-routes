@@ -63,6 +63,8 @@ export interface IndividualDraft {
   marriageLongitude: string
   events: IndividualEventDraft[]
   links: LinkDraft[]
+  // A new parent: the id of the child this person becomes the father / mother of (usePersonEditor, relation father/mother)
+  parentOf?: string
 }
 
 // A link of a person (a GEDCOM OBJE record). `file` is set when the image or document was copied into the tree
@@ -747,6 +749,26 @@ export const useGedcomStore = () => {
         const parent = parentId ? file.individuals.get(parentId) : undefined
         if (parent && !parent.familiesAsSpouse.includes(family.xrefId)) parent.familiesAsSpouse.push(family.xrefId)
       }
+    }
+
+    // A new parent of an existing person: takes the free place in the child's family (by sex), or a new family.
+    // Before the partner below, so that the other parent as partner finds this family and no duplicate is made.
+    if (draft.parentOf && draft.parentOf !== xrefId) {
+      const child = file.individuals.get(draft.parentOf)
+      if (!child) throw new Error(t('tree.relation.missingChild'))
+      let family = child.familiesAsChild.map(id => file.families.get(id)).find(Boolean)
+      const slot: 'husband' | 'wife' | null = individual.sex === 'M' ? 'husband' : individual.sex === 'F' ? 'wife'
+        : !family?.husband ? 'husband' : !family?.wife ? 'wife' : null
+      if (family && (!slot || (family[slot] && family[slot] !== xrefId))) throw new Error(t('tree.relation.parentTaken'))
+      if (!family) {
+        let number = 1
+        while (file.families.has(`F${number}`)) number++
+        family = { xrefId: `F${number}`, children: [child.xrefId], notes: [], sourceCitations: [], multimediaLinks: [], userData: {} }
+        file.families.set(family.xrefId, family)
+        child.familiesAsChild.push(family.xrefId)
+      }
+      family[slot!] = xrefId
+      if (!individual.familiesAsSpouse.includes(family.xrefId)) individual.familiesAsSpouse.push(family.xrefId)
     }
 
     if (draft.spouseId && draft.spouseId !== xrefId) {

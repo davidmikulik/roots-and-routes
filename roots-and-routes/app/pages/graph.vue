@@ -4,6 +4,8 @@ import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useSettings } from '~~/composables/useSettings'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { useT } from '~~/composables/useT'
+import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { usePersonEditor } from '~~/composables/usePersonEditor'
 import { buildTreeNodes, computeLayout, displayName, isUnknownPartner } from '~~/utils/gedcom/treeGraph'
 
 const colorMode = useColorMode()
@@ -84,6 +86,19 @@ const choose = (id: string) => {
   pickerOpen.value = false
 }
 
+// ---- Editing (administrator): the person in the middle can be edited and get new relatives, in the editor shared
+// with the Tree page (docs/graficky-strom-editace.md). The middle person stays; a new relative appears around them.
+const adminAuth = useAdminAuth()
+const editor = usePersonEditor(gedcomStore)
+const canEdit = computed(() => adminAuth.isAdmin.value && editor.canEdit.value)
+const saveChanges = async () => {
+  try {
+    await gedcomStore.saveNow()
+  } catch (error) {
+    window.alert(t('tree.savingFailed', { error: editor.errorText(error) }))
+  }
+}
+
 </script>
 
 <template>
@@ -154,6 +169,25 @@ const choose = (id: string) => {
         </ul>
       </div>
 
+      <div
+        v-if="canEdit"
+        class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
+        data-graph-edit
+      >
+        <span class="text-sm">
+          <span class="opacity-70">{{ t('graph.edit.selected') }}</span>
+          <strong class="ml-1">{{ currentLabel }}</strong>
+        </span>
+        <PersonRelationActions :editor="editor" :person-id="rootId" />
+        <button
+          v-if="gedcomStore.state.value.dirty"
+          type="button"
+          class="ml-auto rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-600"
+          data-save-tree
+          @click="saveChanges"
+        >{{ t('tree.saveToServer') }}</button>
+      </div>
+
       <FamilyTreeChart
         class="h-[70vh] min-h-[320px] w-full"
         :layout="layout"
@@ -170,5 +204,7 @@ const choose = (id: string) => {
         </template>
       </FamilyTreeChart>
     </template>
+
+    <PersonEditor v-if="editor.isOpen.value && canEdit" :editor="editor" />
   </div>
 </template>

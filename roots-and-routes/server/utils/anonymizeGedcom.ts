@@ -4,6 +4,7 @@
 // is empty), addresses, notes, sources, multimedia, attributes and free-text fields. Structure stays: ids, sex,
 // families, parents and children, event types, so the tree and the graph still work.
 import type { GedcomDate, GedcomEvent, GedcomFamily, GedcomFile, GedcomIndividual, GedcomName } from '~~/types/gedcom'
+import { primaryNameOf } from '~~/utils/gedcom/names'
 
 const initials = (value = ''): string =>
   value.replace(/[/]/g, ' ').split(/\s+/).filter(Boolean).map(part => `${part[0]!.toUpperCase()}.`).join(' ')
@@ -36,7 +37,8 @@ const anonymizeEvents = (events?: GedcomEvent[]): GedcomEvent[] | undefined =>
 
 const anonymizeIndividual = (person: GedcomIndividual): GedcomIndividual => ({
   xrefId: person.xrefId,
-  names: person.names.length ? person.names.slice(0, 1).map(anonymizeName) : [],
+  // Only the name the person is shown under (married name, otherwise birth name), as initials
+  names: primaryNameOf(person.names) ? [anonymizeName(primaryNameOf(person.names)!)] : [],
   sex: person.sex,
   birth: anonymizeEvent(person.birth),
   baptism: anonymizeEvent(person.baptism),

@@ -125,7 +125,7 @@ const eventStyle = (type: string) => eventTypeConfig[type as keyof typeof eventT
 // A line in the list of events at one spot on the map
 const describeEvent = (event: MapEvent): string => {
   const person = gedcomStore.state.value.file?.individuals.get(event.personId)
-  const name = anon.name(person?.names[0]?.full || event.personName || '')
+  const name = person ? anon.personName(person) : anon.name(event.personName || '')
   const year = anon.date(event.date || '').match(/\b\d{4}\b/)?.[0]
   return [eventLabel(event.type), year, name].filter(Boolean).join(' · ')
 }
@@ -307,7 +307,7 @@ onUnmounted(() => {
             <label class="block text-sm font-medium">{{ t('map.personBranch') }}
               <select v-model="selectedPersonId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
                 <option value="">{{ t('map.choosePerson') }}</option>
-                <option v-for="person in gedcomStore.getAllAppPersons()" :key="person.id" :value="person.id">{{ anon.name(person.fullName) }}</option>
+                <option v-for="person in gedcomStore.getAllAppPersons()" :key="person.id" :value="person.id">{{ anon.personName(person) }}</option>
               </select>
             </label>
             <select v-model="personScope" class="w-full rounded border px-3 py-2 bg-transparent" :disabled="!selectedPersonId">

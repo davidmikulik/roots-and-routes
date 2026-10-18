@@ -203,7 +203,10 @@ export type GedcomEventType =
 export interface AppPerson {
   id: string
   xrefId?: string
+  // Name for display: the married name with the birth surname when recorded (formatPersonName)
   fullName: string
+  // All names (birth name, married name…), see utils/gedcom/names.ts
+  names?: GedcomName[]
   shortName: string
   lifespan?: string
   sex: 'M' | 'F' | ''

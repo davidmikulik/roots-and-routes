@@ -1,5 +1,8 @@
 import { useSettings } from '~~/composables/useSettings'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
+import { useT } from '~~/composables/useT'
+import { formatPersonName, primaryNameOf } from '~~/utils/gedcom/names'
+import type { GedcomName } from '~~/types/gedcom'
 
 // Anonymous mode: display-only masking of personal information (names → initials, dates → year, places hidden).
 // Always on for visitors who are not logged in as administrator; the administrator can switch it off in the settings.
@@ -7,6 +10,7 @@ import { useAdminAuth } from '~~/composables/useAdminAuth'
 export const useAnonymize = () => {
   const { settings } = useSettings()
   const adminAuth = useAdminAuth()
+  const { t } = useT()
   const enabled = computed(() => !adminAuth.isAdmin.value || settings.value.privacy.anonymousMode)
 
   const name = (value: string): string => {
@@ -14,8 +18,15 @@ export const useAnonymize = () => {
     const initials = value.replace(/[/]/g, ' ').split(/\s+/).filter(Boolean).map(part => `${part[0]!.toUpperCase()}.`).join(' ')
     return initials || '?'
   }
+  // The name of a person everywhere in the app: "Marie Dvořáková (roz. Nováková)" with a married name, otherwise the
+  // birth name; in the anonymous mode the initials of the name the person is shown under
+  const personName = (person?: { names?: GedcomName[] } | null): string => {
+    const names = person?.names || []
+    if (enabled.value) return name(primaryNameOf(names)?.full || '')
+    return formatPersonName(names, t('name.born')) || '?'
+  }
   const date = (value = ''): string => (enabled.value ? value.match(/\b\d{4}\b/)?.[0] || '' : value)
   const place = (value = ''): string => (enabled.value ? '' : value)
 
-  return { enabled, name, date, place }
+  return { enabled, name, personName, date, place }
 }

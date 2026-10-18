@@ -1,5 +1,6 @@
 // GEDCOM Export API Endpoint
 import { writeGedcom } from '~~/utils/gedcom/parser'
+import { birthNameOf, marriedNameOf } from '~~/utils/gedcom/names'
 import { loadParsedGedcom } from '~~/server/utils/storage'
 import type { GedcomFile } from '~~/types'
 import { requireAdminToken } from '~~/server/utils/adminAuth'
@@ -42,12 +43,13 @@ export default defineEventHandler(async (event) => {
         const jsonData = { version: gedcomFile.version, encoding: gedcomFile.encoding, source: gedcomFile.source, date: gedcomFile.date.toISOString(), metadata: gedcomFile.metadata, individuals: Array.from(gedcomFile.individuals.values()), families: Array.from(gedcomFile.families.values()), sources: Array.from(gedcomFile.sources.values()), repositories: Array.from(gedcomFile.repositories.values()), multimedia: Array.from(gedcomFile.multimedia.values()), notes: Array.from(gedcomFile.notes.values()) }
         return { success: true, message: 'JSON export completed', data: { format: 'json', content: jsonData, size: JSON.stringify(jsonData).length }, timestamp: new Date().toISOString() }
       case 'csv':
-        const csvLines: string[] = ['ID,Full Name,Surname,Given Name,Sex,Birth Date,Birth Place,Death Date,Death Place']
+        const csvLines: string[] = ['ID,Full Name,Surname,Given Name,Married Name,Sex,Birth Date,Birth Place,Death Date,Death Place']
         for (const individual of gedcomFile.individuals.values()) {
-          const name = individual.names[0] || { given: '', surname: '', full: '' }
+          const name = birthNameOf(individual.names) || { given: '', surname: '', full: '' }
+          const married = marriedNameOf(individual.names)?.full || ''
           const birth = individual.events.find(e => e.type === 'BIRT')
           const death = individual.events.find(e => e.type === 'DEAT')
-          csvLines.push([individual.xrefId, `"${name.full.replace(/"/g, '""')}"`, `"${name.surname.replace(/"/g, '""')}"`, `"${name.given.replace(/"/g, '""')}"`, individual.sex, birth?.date?.raw ? `"${birth.date.raw.replace(/"/g, '""')}"` : '', birth?.place ? `"${birth.place.replace(/"/g, '""')}"` : '', death?.date?.raw ? `"${death.date.raw.replace(/"/g, '""')}"` : '', death?.place ? `"${death.place.replace(/"/g, '""')}"` : ''].join(','))
+          csvLines.push([individual.xrefId, `"${name.full.replace(/"/g, '""')}"`, `"${name.surname.replace(/"/g, '""')}"`, `"${name.given.replace(/"/g, '""')}"`, `"${married.replace(/"/g, '""')}"`, individual.sex, birth?.date?.raw ? `"${birth.date.raw.replace(/"/g, '""')}"` : '', birth?.place ? `"${birth.place.replace(/"/g, '""')}"` : '', death?.date?.raw ? `"${death.date.raw.replace(/"/g, '""')}"` : '', death?.place ? `"${death.place.replace(/"/g, '""')}"` : ''].join(','))
         }
         const csvContent = csvLines.join('\n')
         return { success: true, message: 'CSV export completed', data: { format: 'csv', content: csvContent, size: csvContent.length }, timestamp: new Date().toISOString() }

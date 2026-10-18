@@ -6,7 +6,7 @@ import type { GedcomEvent, GedcomFile, GedcomIndividual } from '~~/types/gedcom'
 import { linksOf, type IndividualDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
 import { useT } from '~~/composables/useT'
 import { useAnonymize } from '~~/composables/useAnonymize'
-import { displayName } from '~~/utils/gedcom/treeGraph'
+import { birthNameOf, formatPersonName, marriedNameOf } from '~~/utils/gedcom/names'
 
 export type Relation = 'father' | 'mother' | 'partner' | 'child' | 'sibling'
 export const RELATIONS: Relation[] = ['father', 'mother', 'partner', 'child', 'sibling']
@@ -15,7 +15,7 @@ type Store = ReturnType<typeof useGedcomStore>
 
 export function createEmptyDraft(): IndividualDraft {
   return {
-    fullName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
+    fullName: '', marriedName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
     deathDate: '', deathPlace: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
     marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
@@ -34,7 +34,8 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
   const firstPartner = partnerFamily ? (partnerFamily.husband === individual.xrefId ? partnerFamily.wife : partnerFamily.husband) : ''
   return {
     xrefId: individual.xrefId,
-    fullName: individual.names[0]?.full || '',
+    fullName: birthNameOf(individual.names)?.full || '',
+    marriedName: marriedNameOf(individual.names)?.full || '',
     sex: individual.sex,
     birthDate: formatDateInput(individual.birth?.date?.parsed),
     birthPlace: individual.birth?.place || '',
@@ -120,11 +121,14 @@ export const usePersonEditor = (store: Store) => {
 
   const nameOf = (id: string): string => {
     const person = store.state.value.file?.individuals.get(id)
-    return person ? anon.name(displayName(person)) : id
+    return person ? anon.personName(person) : id
   }
   // People for the parent and partner choices, sorted by name
   const people = computed(() => store.getAllAppPersons()
-    .map(person => ({ id: person.id, label: person.lifespan ? `${person.fullName} (${person.lifespan})` : person.fullName }))
+    .map((person) => {
+      const name = formatPersonName(person.names, t('name.born')) || person.fullName
+      return { id: person.id, label: person.lifespan ? `${name}, ${person.lifespan}` : name }
+    })
     .sort((a, b) => a.label.localeCompare(b.label)))
 
   const availability = (id: string): Record<Relation, boolean> => {

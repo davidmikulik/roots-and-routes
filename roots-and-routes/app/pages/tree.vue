@@ -93,7 +93,7 @@ const filteredPeople = computed<AppPerson[]>(() => {
   const query = searchQuery.value.toLowerCase()
   // In anonymous mode only what is displayed can be searched, otherwise the search would reveal the real names
   return allPeople.value.filter(person => 
-    anon.name(person.fullName).toLowerCase().includes(query) ||
+    anon.personName(person).toLowerCase().includes(query) ||
     (person.lifespan && person.lifespan.toLowerCase().includes(query))
   )
 })
@@ -184,7 +184,7 @@ const descendantGenerations = computed(() => {
 
 const personName = (xrefId: string): string => {
   const person = gedcomStore.individuals.value.get(xrefId)
-  return person?.names[0]?.full ? anon.name(person.names[0].full) : xrefId
+  return person?.names.length ? anon.personName(person) : xrefId
 }
 
 const selectById = (xrefId: string) => {
@@ -444,7 +444,7 @@ const deletePerson = async (person: AppPerson) => {
             >
               <td class="p-4">
                 <div class="font-medium" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  {{ anon.name(person.fullName) }}
+                  {{ anon.personName(person) }}
                 </div>
                 <div v-if="person.isRoot" class="text-xs opacity-60">{{ t('tree.root') }}</div>
               </td>
@@ -544,7 +544,7 @@ const deletePerson = async (person: AppPerson) => {
           
           <div class="flex-1">
             <h2 class="text-2xl font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ anon.name(selectedPerson.fullName) }}
+              {{ anon.personName(selectedPerson) }}
             </h2>
             <PersonRelationActions :editor="editor" :person-id="selectedPerson.id" class="mb-4" />
             

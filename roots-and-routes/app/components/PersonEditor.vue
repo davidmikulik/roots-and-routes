@@ -131,8 +131,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       </div>
       <p v-if="editor.note.value" class="mb-5 text-sm text-primary-700 dark:text-primary-300" data-relation-note>{{ editor.note.value }}</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label class="sm:col-span-2 text-sm">{{ t('tree.field.fullName') }}
+        <label class="text-sm">{{ t('tree.field.fullName') }}
           <input v-model="form.fullName" required class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="name" data-field-name>
+        </label>
+        <label class="text-sm">{{ t('tree.field.marriedName') }}
+          <input v-model="form.marriedName" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.marriedNamePlaceholder')" :title="t('tree.field.marriedNameHint')" data-field-married-name>
         </label>
         <label class="text-sm">{{ t('tree.field.sex') }}
           <select v-model="form.sex" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-field-sex>

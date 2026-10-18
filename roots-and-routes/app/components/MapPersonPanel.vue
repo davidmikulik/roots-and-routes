@@ -9,7 +9,6 @@ import type { MessageKey } from '~~/i18n'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
-import { displayName } from '~~/utils/gedcom/treeGraph'
 import { formatGedcomDate } from '~~/utils/gedcom/dates'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 
@@ -72,7 +71,7 @@ const family = computed(() => {
       label: t(GROUP_LABELS[key]),
       people: groups[key].map(id => ({
         id,
-        name: anon.name(displayName(data.individuals.get(id)!)),
+        name: anon.personName(data.individuals.get(id)),
         onMap: (props.eventsByPerson.get(id)?.length ?? 0) > 0,
       })),
     }))
@@ -95,7 +94,7 @@ const avatar = computed(() => {
     <div class="flex items-start gap-3">
       <span class="grid h-12 w-12 shrink-0 place-items-center rounded-full text-2xl" :class="avatar.color" aria-hidden="true">{{ avatar.emoji }}</span>
       <div class="min-w-0 flex-1">
-        <h3 class="break-words text-lg font-bold leading-tight text-gray-900 dark:text-white">{{ anon.name(displayName(person)) }}</h3>
+        <h3 class="break-words text-lg font-bold leading-tight text-gray-900 dark:text-white">{{ anon.personName(person) }}</h3>
         <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
           <LifespanTips :person="person" hide-empty plain />
         </p>

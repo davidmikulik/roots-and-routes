@@ -116,6 +116,40 @@ const restoreBackup = async (backup: BackupInfo) => {
   }
 }
 
+// One-off: names after marriage from the original GEDCOM file (utils/gedcom/marriedNames.ts). First only counted,
+// then after a confirmation taken over; the server backs the tree up first. Not with unsaved edits in the browser:
+// the next save would overwrite the server's tree with the older copy.
+const marriedNamesBusy = ref(false)
+const takeMarriedNames = async () => {
+  if (gedcomStore.state.value.dirty) {
+    message.value = { type: 'error', text: t('settings.data.marriedNames.dirty') }
+    return
+  }
+  marriedNamesBusy.value = true
+  message.value = null
+  try {
+    type Result = { added: number; mismatched: number; alreadySet: number }
+    const check = await $fetch<Result>('/api/admin/married-names', { method: 'POST', headers: adminAuth.authHeaders(), body: { apply: false } })
+    if (!check.added) {
+      message.value = { type: 'success', text: t('settings.data.marriedNames.none', { skipped: check.mismatched, already: check.alreadySet }) }
+      return
+    }
+    if (!window.confirm(t('settings.data.marriedNames.confirm', { n: check.added, skipped: check.mismatched }))) return
+    const result = await $fetch<Result>('/api/admin/married-names', {
+      method: 'POST',
+      headers: adminAuth.authHeaders(),
+      body: { apply: true, keep: settings.value.data.backupCount },
+    })
+    await gedcomStore.refreshFromServer()
+    await loadBackups()
+    message.value = { type: 'success', text: t('settings.data.marriedNames.done', { n: result.added }) }
+  } catch (error: any) {
+    message.value = { type: 'error', text: t('settings.data.marriedNames.failed', { error: error?.data?.statusMessage || error?.message || '' }) }
+  } finally {
+    marriedNamesBusy.value = false
+  }
+}
+
 watch([() => adminAuth.isAdmin.value, activeSection], ([isAdmin, section]) => {
   if (isAdmin && section === 'data') loadBackups()
 }, { immediate: true })
@@ -341,6 +375,20 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div v-if="adminAuth.isAdmin.value" :class="cardClass" data-married-names>
+            <h3 class="text-lg font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+              {{ t('settings.data.marriedNames.title') }}
+            </h3>
+            <p class="mb-4 text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.data.marriedNames.hint') }}</p>
+            <button
+              type="button"
+              class="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 font-medium disabled:opacity-60"
+              :disabled="marriedNamesBusy"
+              data-take-married-names
+              @click="takeMarriedNames"
+            >{{ marriedNamesBusy ? t('settings.data.marriedNames.running') : t('settings.data.marriedNames.button') }}</button>
           </div>
         </div>
 

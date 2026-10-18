@@ -6,7 +6,7 @@ import { useAnonymize } from '~~/composables/useAnonymize'
 import { useT } from '~~/composables/useT'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { usePersonEditor } from '~~/composables/usePersonEditor'
-import { buildTreeNodes, computeLayout, displayName, isUnknownPartner } from '~~/utils/gedcom/treeGraph'
+import { buildTreeNodes, computeLayout, isUnknownPartner } from '~~/utils/gedcom/treeGraph'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -57,7 +57,7 @@ const cardOf = (id: string) => {
   if (isUnknownPartner(id) || !person) return { placeholder: true, name: t('graph.unknownPerson'), person: undefined, gender: 'unknown' as const }
   return {
     placeholder: false,
-    name: anon.name(displayName(person)),
+    name: anon.personName(person),
     person,
     gender: built.value?.unknownSex.has(id) ? ('unknown' as const) : (byId.value.get(id)?.gender ?? ('unknown' as const)),
   }
@@ -71,7 +71,7 @@ const people = computed(() =>
   [...(file.value?.individuals.values() ?? [])]
     .map((person) => {
       const year = person.birth?.date?.parsed?.getFullYear()
-      return { id: person.xrefId, label: `${anon.name(displayName(person))}${year ? ` (${year})` : ''}` }
+      return { id: person.xrefId, label: `${anon.personName(person)}${year ? ` (${year})` : ''}` }
     })
     .sort((a, b) => a.label.localeCompare(b.label, appSettings.settings.value.language)),
 )

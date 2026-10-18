@@ -1,6 +1,6 @@
 // Custom GEDCOM Parser - Complete implementation
 import type { LatLngTuple as LngLat } from 'leaflet'
-import { parseGedcomName, nameToGedcom } from './names'
+import { parseGedcomName, nameToGedcom, stripSurnameSlashes, formatPersonName } from './names'
 import { EVENT_TYPES, type ExtraTag } from './eventTypes'
 import type {
   GedcomFile, GedcomLine, GedcomIndividual, GedcomFamily, GedcomName,
@@ -48,6 +48,9 @@ class GedcomParser {
   private currentIndividualEvent: GedcomEvent | null = null
   // Inside an unknown level-1 tag of a person (e.g. CHAN with its DATE): its sub-lines are skipped
   private inUnknownIndividualTag = false
+  // The NAME record being read: its sub-lines (TYPE, GIVN, SURN, _MARNM…) belong to it
+  private currentName: GedcomName | null = null
+  private currentNamePerson: GedcomIndividual | null = null
   private currentFamilyEvent: GedcomEvent | null = null
   
   constructor(options: GedcomParseOptions = {}) {
@@ -134,6 +137,7 @@ class GedcomParser {
         if (currentRecord) this.saveRecord(currentRecord, file)
         this.currentIndividualEvent = null
         this.currentFamilyEvent = null
+        this.currentName = null
         
         if (line.xrefId && RECORD_TAGS.includes(line.tag)) {
           currentRecord = { type: line.tag, xrefId: line.xrefId, data: this.createRecord(line.tag, line.xrefId) }
@@ -299,14 +303,20 @@ class GedcomParser {
       return
     }
     if (line.level > 1 && this.inUnknownIndividualTag) return
+    if (line.level === 2 && this.currentName && this.currentNamePerson === individual && this.processNameDetail(tag, value, individual)) return
 
     this.currentIndividualEvent = null
     this.inUnknownIndividualTag = false
+    if (line.level === 1) this.currentName = null
     
     switch (tag) {
-      case 'NAME':
-        individual.names.push(this.parseName(value))
+      case 'NAME': {
+        const name = this.parseName(value)
+        individual.names.push(name)
+        this.currentName = name
+        this.currentNamePerson = individual
         break
+      }
       case 'SEX':
         individual.sex = value === 'M' ? 'M' : value === 'F' ? 'F' : ''
         break
@@ -526,6 +536,41 @@ class GedcomParser {
   // `full` is stored without the surname slashes; see utils/gedcom/names.ts
   private parseName(nameString: string): GedcomName {
     return parseGedcomName(nameString)
+  }
+
+  // A sub-line of NAME. TYPE says what kind of name it is (birth, married…); _MARNM (MyHeritage) is the married
+  // surname, which becomes a separate married name. Returns false for lines that are not about the name (e.g. a
+  // NOTE or SOUR, handled as before).
+  private processNameDetail(tag: string, value: string, individual: GedcomIndividual): boolean {
+    const name = this.currentName!
+    switch (tag) {
+      case 'TYPE':
+        if (value) name.type = value.trim().toLowerCase()
+        return true
+      case 'GIVN':
+        if (!name.given && value) { name.given = value.trim(); if (!name.full) name.full = [name.given, name.surname].filter(Boolean).join(' ') }
+        return true
+      case 'SURN':
+        if (!name.surname && value) { name.surname = value.trim(); if (!name.full) name.full = [name.given, name.surname].filter(Boolean).join(' ') }
+        return true
+      case 'NPFX':
+        if (value) name.prefix = value.trim()
+        return true
+      case 'NSFX':
+        if (value && !name.suffix) name.suffix = value.trim()
+        return true
+      case 'NICK':
+        if (value) name.nickname = value.trim()
+        return true
+      case '_MARNM': {
+        const surname = stripSurnameSlashes(value || '')
+        if (!surname || individual.names.some(existing => existing.type === 'married' && existing.surname === surname)) return true
+        individual.names.push({ full: [name.given, surname].filter(Boolean).join(' '), given: name.given, surname, type: 'married' })
+        return true
+      }
+      default:
+        return false
+    }
   }
 
   // The value on the event line is not a date: "Y" for an event that happened, or the descriptor of an attribute
@@ -930,8 +975,8 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
 
 // Conversion functions
 export function convertToAppPerson(individual: GedcomIndividual, file: GedcomFile, generation: number = 0): AppPerson {
-  const primaryName = individual.names[0] || { full: 'Unknown', given: 'Unknown', surname: '' }
-  const fullName = primaryName.full || `${primaryName.given} ${primaryName.surname}`.trim()
+  // Married name with the birth surname when recorded (utils/gedcom/names.ts)
+  const fullName = formatPersonName(individual.names) || 'Unknown'
   const shortName = fullName.split(' ')[0] || 'Unknown'
   
   // Calculate lifespan
@@ -1003,6 +1048,7 @@ export function convertToAppPerson(individual: GedcomIndividual, file: GedcomFil
     id: individual.xrefId || `person_${Math.random().toString(36).substr(2, 9)}`,
     xrefId: individual.xrefId,
     fullName,
+    names: individual.names,
     shortName,
     lifespan,
     sex: individual.sex,
@@ -1051,8 +1097,8 @@ export function convertToFamilyTree(file: GedcomFile, rootXrefId?: string): Fami
   
   // Build all AppPersons
   const buildPerson = (individual: GedcomIndividual, generation: number = 0): AppPerson => {
-    const primaryName = individual.names[0] || { full: 'Unknown', given: 'Unknown', surname: '' }
-    const fullName = primaryName.full || `${primaryName.given} ${primaryName.surname}`.trim()
+    // Married name with the birth surname when recorded (utils/gedcom/names.ts)
+    const fullName = formatPersonName(individual.names) || 'Unknown'
     const shortName = fullName.split(' ')[0] || 'Unknown'
     
     // Calculate lifespan
@@ -1085,6 +1131,7 @@ export function convertToFamilyTree(file: GedcomFile, rootXrefId?: string): Fami
       id: individual.xrefId || `person_${Math.random().toString(36).substr(2, 9)}`,
       xrefId: individual.xrefId,
       fullName,
+      names: individual.names,
       shortName,
       lifespan,
       sex: individual.sex,
@@ -1248,8 +1295,8 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
   const events: MapEvent[] = []
   
   for (const [xrefId, individual] of file.individuals) {
-    const primaryName = individual.names[0] || { full: 'Unknown', given: 'Unknown', surname: '' }
-    const fullName = primaryName.full || `${primaryName.given} ${primaryName.surname}`.trim()
+    // Married name with the birth surname when recorded (utils/gedcom/names.ts)
+    const fullName = formatPersonName(individual.names) || 'Unknown'
     
     // Process known event types
     const eventTypes: { key: keyof GedcomIndividual; type: GedcomEventType }[] = [
@@ -1310,11 +1357,12 @@ export function createMapEventsFromFile(file: GedcomFile): MapEvent[] {
     const person = personId ? file.individuals.get(personId) : undefined
     if (!event?.coordinates || !personId || !person) continue
     const spouseId = family.husband === personId ? family.wife : family.husband
-    const spouseName = spouseId ? file.individuals.get(spouseId)?.names[0]?.full : undefined
+    const spouse = spouseId ? file.individuals.get(spouseId) : undefined
+    const spouseName = spouse ? formatPersonName(spouse.names) : undefined
     events.push({
       id: `${family.xrefId}_MARR`,
       personId,
-      personName: spouseName ? `${person.names[0]?.full || personId} & ${spouseName}` : person.names[0]?.full || personId,
+      personName: spouseName ? `${formatPersonName(person.names) || personId} & ${spouseName}` : formatPersonName(person.names) || personId,
       type: 'MARR',
       date: event.date?.raw || '',
       place: event.place || '',

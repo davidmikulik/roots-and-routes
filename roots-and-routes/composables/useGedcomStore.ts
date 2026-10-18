@@ -1,9 +1,9 @@
 import { computed, effectScope, onMounted, watch } from 'vue'
-import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
+import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import { parseGedcom, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyCatalogToTree, applyKnownLocations, learnKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
-import { parseGedcomName } from '~~/utils/gedcom/names'
+import { birthNameOf, formatPersonName, isMarriedName, marriedNameOf, parseGedcomName } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
@@ -43,7 +43,9 @@ export interface IndividualEventDraft {
 
 export interface IndividualDraft {
   xrefId?: string
+  // Birth name and the name after marriage (empty = none), see utils/gedcom/names.ts
   fullName: string
+  marriedName: string
   sex: 'M' | 'F' | ''
   birthDate: string
   birthPlace: string
@@ -215,7 +217,8 @@ const createEmptyState = (): GedcomState => ({
   anonymized: false,
 })
 
-const normalizedName = (individual: GedcomIndividual): string => (individual.names[0]?.full || '')
+// Duplicates are matched by the birth name (the married name may be missing in the other file)
+const normalizedName = (individual: GedcomIndividual): string => (birthNameOf(individual.names)?.full || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
@@ -484,8 +487,8 @@ export const useGedcomStore = () => {
         duplicates.push({
           incomingXref: incomingPerson.xrefId,
           existingXref: match.xrefId,
-          incomingName: incomingPerson.names[0]?.full || incomingPerson.xrefId,
-          existingName: match.names[0]?.full || match.xrefId,
+          incomingName: formatPersonName(incomingPerson.names) || incomingPerson.xrefId,
+          existingName: formatPersonName(match.names) || match.xrefId,
         })
       }
     }
@@ -689,10 +692,22 @@ export const useGedcomStore = () => {
     // Places and coordinates of the person before the edit, to tell coordinates entered now from those already there
     const locationsBefore = new Set(existing ? personEvents(file, existing).filter(event => event?.place).map(event => locationStamp(event!.place!, event!.coordinates)) : [])
     // "Jan /Novák/" is read like a GEDCOM name; otherwise the last word is taken as the surname
-    const typedName = draft.fullName.trim()
-    const words = typedName.split(/\s+/)
-    const surname = words.length > 1 ? words.pop()! : ''
-    const name = typedName.includes('/') ? parseGedcomName(typedName) : { full: typedName, given: words.join(' '), surname }
+    const readName = (typed: string): GedcomName => {
+      const text = typed.trim()
+      const words = text.split(/\s+/)
+      const surname = words.length > 1 ? words.pop()! : ''
+      return text.includes('/') ? parseGedcomName(text) : { full: text, given: words.join(' '), surname }
+    }
+    // An unchanged name keeps its record as it is (parts, suffix, type). The birth name gets TYPE birth next to a
+    // married name; other names of the person (aka, immigrant…) are kept.
+    const oldBirth = existing ? birthNameOf(existing.names) : undefined
+    const oldMarried = existing ? marriedNameOf(existing.names) : undefined
+    const keepOrRead = (typed: string, old?: GedcomName): GedcomName => (old && old.full === typed.trim() ? { ...old } : readName(typed))
+    const married: GedcomName | undefined = draft.marriedName?.trim() ? { ...keepOrRead(draft.marriedName, oldMarried), type: 'married' } : undefined
+    const birth = keepOrRead(draft.fullName, oldBirth)
+    if (married && !birth.type) birth.type = 'birth'
+    const otherNames = (existing?.names || []).filter(name => name !== oldBirth && name !== oldMarried && !isMarriedName(name))
+    const names = [birth, ...(married ? [married] : []), ...otherNames]
     const individual: GedcomIndividual = {
       ...(existing || {
         xrefId,
@@ -709,7 +724,7 @@ export const useGedcomStore = () => {
         userData: {},
       }),
       xrefId,
-      names: [name],
+      names,
       sex: draft.sex,
       birth: createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date),
       death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date),

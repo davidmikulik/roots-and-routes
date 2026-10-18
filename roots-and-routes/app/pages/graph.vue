@@ -64,32 +64,9 @@ const cardOf = (id: string) => {
 }
 const cardLabel = (id: string) => t('graph.card', { name: cardOf(id).name })
 
-// ---- Choosing the person in the middle
-const query = ref('')
-const pickerOpen = ref(false)
-// Sorted by family name and given name; found by given name, family name (birth or after marriage) and year of birth
-const people = computed(() =>
-  [...(file.value?.individuals.values() ?? [])]
-    .map((person) => {
-      const year = person.birth?.date?.parsed?.getFullYear()
-      return { id: person.xrefId, person, year: year ? String(year) : '', label: `${anon.personName(person)}${year ? ` (${year})` : ''}`, key: anon.sortKey(person) }
-    })
-    .sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label, appSettings.settings.value.language)),
-)
-const results = computed(() => {
-  const words = query.value.trim().split(/\s+/).filter(Boolean)
-  if (!words.length) return people.value.slice(0, 50)
-  // A number is the year of birth ("novák 1850"), the other words the name
-  const yearWord = words.find(word => /^\d{1,4}$/.test(word))
-  const nameQuery = words.filter(word => word !== yearWord).join(' ')
-  return people.value.filter(entry => (!yearWord || entry.year.startsWith(yearWord)) && anon.matchesName(entry.person, nameQuery)).slice(0, 50)
-})
+// ---- The person in the middle (chosen in PersonPicker.vue, shared with the map)
 const currentLabel = computed(() => (rootId.value ? cardOf(rootId.value).name : ''))
-const choose = (id: string) => {
-  setRoot(id)
-  query.value = ''
-  pickerOpen.value = false
-}
+const choose = (id: string) => { if (id) setRoot(id) }
 
 // ---- Editing (administrator): the person in the middle can be edited and get new relatives, in the editor shared
 // with the Tree page (docs/graficky-strom-editace.md). The middle person stays; a new relative appears around them.
@@ -150,44 +127,16 @@ const openMenu = (value: { id: string; x: number; y: number }) => { menu.value =
     </p>
 
     <template v-else>
-      <div class="relative mb-3 max-w-md">
-        <label for="graph-root" class="mb-1 block text-sm font-medium" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">
-          {{ t('graph.root.label') }}
-        </label>
-        <input
-          id="graph-root"
-          v-model="query"
-          type="search"
-          role="combobox"
-          autocomplete="off"
-          :aria-expanded="pickerOpen"
-          aria-controls="graph-root-results"
-          :placeholder="currentLabel || t('graph.root.placeholder')"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-300"
-          @focus="pickerOpen = true"
-          @input="pickerOpen = true"
-          @blur="pickerOpen = false"
-          @keydown.escape="pickerOpen = false"
-          @keydown.enter.prevent="results[0] && choose(results[0].id)"
-        >
-        <ul
-          v-if="pickerOpen"
-          id="graph-root-results"
-          role="listbox"
-          class="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
-        >
-          <li v-for="person in results" :key="person.id" role="option" :aria-selected="person.id === rootId">
-            <!-- mousedown, not click: the input's blur would close the list before a click arrives -->
-            <button
-              type="button"
-              class="block w-full px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
-              :class="person.id === rootId ? 'font-semibold' : ''"
-              @mousedown.prevent="choose(person.id)"
-            >{{ person.label }}</button>
-          </li>
-          <li v-if="!results.length" class="px-3 py-2 text-sm opacity-70">{{ t('graph.root.none') }}</li>
-        </ul>
-      </div>
+      <PersonPicker
+        class="mb-3 max-w-md"
+        :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }"
+        input-id="graph-root"
+        :file="file"
+        :model-value="rootId"
+        :label="t('graph.root.label')"
+        :placeholder="t('graph.root.placeholder')"
+        @update:model-value="choose"
+      />
 
       <div
         class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"

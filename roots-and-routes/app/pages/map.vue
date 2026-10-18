@@ -93,11 +93,11 @@ watch(chosenCustomLayer, async (layer) => {
 // Archive map sheets of a place for the list of events at one spot and the right-click popup; hidden with the places
 const archiveMapsFor = (place?: string) => (anon.enabled.value ? [] : knownLocations.archiveMapsFor(place))
 
-// People for the person filter, sorted by family name and given name
-const sortedPeople = computed(() => gedcomStore.getAllAppPersons()
-  .map(person => ({ person, key: anon.sortKey(person) }))
-  .sort((a, b) => a.key.localeCompare(b.key))
-  .map(entry => entry.person))
+// Choosing a person (PersonPicker.vue) shows only them at first; with "all people" the choice would do nothing
+watch(selectedPersonId, (id) => {
+  if (id && personScope.value === 'all') personScope.value = 'person'
+  if (!id) personScope.value = 'all'
+})
 
 // Get map events from store
 const mapEvents = computed<MapEvent[]>(() => {
@@ -287,12 +287,14 @@ onUnmounted(() => {
             </label>
           </div>
           <div class="mt-5 space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
-            <label class="block text-sm font-medium">{{ t('map.personBranch') }}
-              <select v-model="selectedPersonId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
-                <option value="">{{ t('map.choosePerson') }}</option>
-                <option v-for="person in sortedPeople" :key="person.id" :value="person.id">{{ anon.personName(person) }}</option>
-              </select>
-            </label>
+            <PersonPicker
+              v-model="selectedPersonId"
+              input-id="map-person"
+              :file="gedcomStore.state.value.file"
+              :label="t('map.personBranch')"
+              :placeholder="t('map.choosePerson')"
+              clearable
+            />
             <select v-model="personScope" class="w-full rounded border px-3 py-2 bg-transparent" :disabled="!selectedPersonId">
               <option value="all">{{ t('map.scope.all') }}</option>
               <option value="person">{{ t('map.scope.person') }}</option>

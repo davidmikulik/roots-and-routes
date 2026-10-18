@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useReleaseNotes } from '~~/composables/useReleaseNotes'
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
@@ -153,6 +154,9 @@ const takeMarriedNames = async () => {
 watch([() => adminAuth.isAdmin.value, activeSection], ([isAdmin, section]) => {
   if (isAdmin && section === 'data') loadBackups()
 }, { immediate: true })
+
+// What's new in the current version (utils/releaseNotes.ts), with a link to all release notes
+const releaseNotes = useReleaseNotes()
 
 // Filled in at build time by nuxt.config.ts
 const build = useRuntimeConfig().public.build as { version: string; number: string; time: string; commit: string }
@@ -430,6 +434,15 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                 </p>
                 <p v-if="isClient" data-build-time class="text-sm" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">{{ t('settings.about.builtAt', { date: builtAt }) }}</p>
                 <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.about.built') }}</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4" data-about-releases>
+              <span class="text-3xl">🆕</span>
+              <div class="min-w-0 flex-1">
+                <h3 class="font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('releases.latest', { version: releaseNotes.latest.version }) }}</h3>
+                <p class="mb-3 text-sm opacity-70">{{ releaseNotes.titleOf(releaseNotes.latest) }} · {{ releaseNotes.formatDate(releaseNotes.latest.date) }}</p>
+                <ReleaseNotesList :releases="[releaseNotes.latest]" hide-heading />
+                <NuxtLink to="/release-notes" class="mt-3 inline-block text-sm font-medium text-primary-700 underline dark:text-primary-300">{{ t('releases.all') }}</NuxtLink>
               </div>
             </div>
             <div class="flex items-start gap-4">

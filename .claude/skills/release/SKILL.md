@@ -10,9 +10,10 @@ Každý krok dělej **jen na výslovný pokyn**. „commit“ neznamená push. *
 ## Commit
 
 1. Před commitem změn v kódu spusť skill `verify-change`, pokud ještě neproběhl.
-2. `git status` a `git diff`: commituj jen soubory, které patří k úkolu. Nikdy `.env` ani stažená data (`get.json`, `.ged`).
-3. Zpráva je krátká, česky bez diakritiky nebo ve tvaru `fix: …` / `feat: …` / `improve: …`, např. `feat: detail osoby na mape po vyberu znacky`. Na konec přidej řádek Co-Authored-By podle pokynů prostředí.
-4. Větev `master`, commituje se přímo do ní.
+2. Změna, kterou uživatel uvidí, patří do novinek: doplň položku do `roots-and-routes/utils/releaseNotes.ts` (česky i anglicky). Nové vydání = nová položka na začátku `RELEASE_NOTES` a stejná `version` v `roots-and-routes/package.json`. Ověř `npm run check:release`.
+3. `git status` a `git diff`: commituj jen soubory, které patří k úkolu. Nikdy `.env` ani stažená data (`get.json`, `.ged`).
+4. Zpráva je krátká, česky bez diakritiky nebo ve tvaru `fix: …` / `feat: …` / `improve: …`, např. `feat: detail osoby na mape po vyberu znacky`. Na konec přidej řádek Co-Authored-By podle pokynů prostředí.
+5. Větev `master`, commituje se přímo do ní.
 
 ## Push
 

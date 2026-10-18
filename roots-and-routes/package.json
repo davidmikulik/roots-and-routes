@@ -1,6 +1,6 @@
 {
   "name": "roots-and-routes",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "Genealogy application for visualizing family trees on maps with GEDCOM support",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "postinstall": "nuxt prepare",
     "typecheck": "vue-tsc --noEmit",
     "check:graph": "jiti scripts/check-graph.mts",
+    "check:release": "jiti scripts/check-release-notes.mts",
     "lint": "eslint . --ext .vue,.ts,.js,.tsx,.jsx",
     "vercel-build": "nuxt build",
     "deploy": "vercel --prod"

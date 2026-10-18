@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
 import { useT } from '~~/composables/useT'
+import { useReleaseNotes } from '~~/composables/useReleaseNotes'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const { t } = useT()
+// The latest release on the home page; whether it was seen is known only in the browser (localStorage)
+const notes = useReleaseNotes()
+onMounted(() => notes.restoreSeen())
 
 const features = computed(() => [
   { icon: '🗺️', title: t('home.feature.map.title'), description: t('home.feature.map.desc'), route: '/map' },
@@ -54,6 +58,19 @@ const features = computed(() => [
             {{ t('home.viewMap') }}
           </NuxtLink>
         </div>
+      </div>
+    </section>
+
+    <!-- What's new: the latest release (utils/releaseNotes.ts); "New" until the release notes page was opened -->
+    <section class="pb-16 px-4 sm:px-6 lg:px-8" data-home-releases>
+      <div class="max-w-3xl mx-auto rounded-2xl border p-6 sm:p-8" :class="{ 'border-gray-700 bg-gray-800/60': isDark, 'border-gray-200 bg-white shadow-sm': !isDark }">
+        <div class="mb-1 flex flex-wrap items-center gap-3">
+          <h2 class="text-2xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('releases.latest', { version: notes.latest.version }) }}</h2>
+          <span v-if="notes.hasUnseen.value" class="rounded-full bg-primary-600 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white" data-release-new>{{ t('releases.newBadge') }}</span>
+        </div>
+        <p class="mb-5 text-sm" :class="{ 'text-gray-400': isDark, 'text-gray-500': !isDark }">{{ notes.titleOf(notes.latest) }} · {{ notes.formatDate(notes.latest.date) }}</p>
+        <ReleaseNotesList :releases="[notes.latest]" hide-heading />
+        <NuxtLink to="/release-notes" class="mt-6 inline-block font-medium text-primary-700 underline dark:text-primary-300" data-release-link>{{ t('releases.all') }}</NuxtLink>
       </div>
     </section>
 

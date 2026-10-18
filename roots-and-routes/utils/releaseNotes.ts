@@ -1,0 +1,99 @@
+// Release notes shown on /release-notes, on the home page (the latest release) and in Settings → About.
+// Newest release first. Every release adds an entry here and the same version to package.json (the About page shows
+// the version from package.json; scripts/check-release-notes.mts checks they match). Texts are for users, in Czech
+// and English, without technical terms.
+export type ReleaseItemKind = 'new' | 'improved' | 'fixed'
+
+export interface ReleaseItem {
+  kind: ReleaseItemKind
+  cs: string
+  en: string
+}
+
+export interface Release {
+  version: string
+  // ISO date of the release (YYYY-MM-DD)
+  date: string
+  title: { cs: string; en: string }
+  items: ReleaseItem[]
+}
+
+export const RELEASE_NOTES: Release[] = [
+  {
+    version: '1.5.0',
+    date: '2026-10-18',
+    title: { cs: 'Jména, data a detail osoby', en: 'Names, dates and the person detail' },
+    items: [
+      { kind: 'new', cs: 'Rodné jméno a příjmení po sňatku. Osoba se zobrazuje jako „Marie Nováková (roz. Dvořáková)“. Jména po sňatku z původně importovaného souboru jde převzít v Nastavení → Data.', en: 'Birth name and surname after marriage. A person is shown as "Marie Nováková (née Dvořáková)". Names after marriage from the originally imported file can be taken over in Settings → Data.' },
+      { kind: 'new', cs: 'Jméno a příjmení se zadávají zvlášť. Hledání a řazení podle rodového jména, ve Stromu filtr Rodové jméno.', en: 'Given name and surname are entered separately. Search and sorting by family name, a Family name filter on the Tree page.' },
+      { kind: 'new', cs: 'Na mapě se osoba vybírá psaním jména, příjmení nebo roku narození, bez ohledu na diakritiku.', en: 'On the map a person is chosen by typing a name, surname or year of birth, diacritics do not matter.' },
+      { kind: 'new', cs: 'Neúplná data událostí: jen rok, měsíc a rok, s upřesněním asi, před nebo po. Zobrazují se slovy, např. „asi 1850“ nebo „březen 1850“.', en: 'Incomplete event dates: just a year, a month and year, about, before or after. They are shown in words, e.g. "about 1850" or "March 1850".' },
+      { kind: 'new', cs: 'U úmrtí jde zapsat příčinu.', en: 'A cause of death can be recorded.' },
+      { kind: 'new', cs: 'Grafický strom: detail osoby a menu na pravé tlačítko myši se stejnými akcemi jako tlačítka.', en: 'Graphical tree: a person detail and a right-click menu with the same actions as the buttons.' },
+      { kind: 'new', cs: 'Detail osoby na mapě má tlačítko Vybrat osobu, detail v grafickém stromu odkaz Vybrat na mapě.', en: 'The person detail on the map has a Choose the person button, the detail in the graphical tree a Choose on the map link.' },
+      { kind: 'new', cs: 'Odkazy a vložené dokumenty jsou vidět i v detailu osoby na mapě a v grafickém stromu.', en: 'Links and stored documents are shown in the person detail on the map and in the graphical tree too.' },
+      { kind: 'new', cs: 'Novinky jednotlivých verzí (tato stránka), na úvodní stránce a v O aplikaci.', en: 'Release notes (this page), on the home page and in About.' },
+      { kind: 'fixed', cs: 'Editor už při uložení nemění neúplná data na 1. ledna a datum jde smazat.', en: 'The editor no longer turns incomplete dates into 1 January when saving, and a date can be removed.' },
+      { kind: 'fixed', cs: 'U událostí se už nezobrazují pomocné údaje z MyHeritage (např. MH:I500003 nebo čas úpravy).', en: 'Events no longer show helper values from MyHeritage (e.g. MH:I500003 or the time of a change).' },
+    ],
+  },
+  {
+    version: '1.4.0',
+    date: '2026-10-18',
+    title: { cs: 'Vlastní mapové vrstvy a úpravy v grafickém stromu', en: 'Own map layers and editing in the graphical tree' },
+    items: [
+      { kind: 'new', cs: 'Vlastní vrstvy historických map: nahrané listy umístěné na mapu body, které jde kdykoli upravit, přesunout nebo odebrat (Admin → Mapové vrstvy).', en: 'Own historical map layers: uploaded sheets placed on the map by points that can be edited, moved or removed at any time (Admin → Map layers).' },
+      { kind: 'new', cs: 'Úpravy v grafickém stromu: úprava osoby a přidání otce, matky, partnera, dítěte nebo sourozence s předvyplněnou vazbou.', en: 'Editing in the graphical tree: edit a person and add a father, mother, partner, child or sibling with the relation filled in.' },
+      { kind: 'improved', cs: 'Jeden společný editor osob pro Strom i Grafický strom.', en: 'One person editor shared by the Tree and the Graphical tree.' },
+    ],
+  },
+  {
+    version: '1.3.0',
+    date: '2026-10-17',
+    title: { cs: 'Historické mapy', en: 'Historical maps' },
+    items: [
+      { kind: 'new', cs: 'Nová mapa s historickými vrstvami: vojenská mapování, císařské otisky stabilního katastru, letecké snímky z 50. let, turistická mapa, katastr a čísla domů.', en: 'A new map with historical layers: military surveys, imperial imprints of the stable cadastre, aerial photos from the 1950s, a topographic map, the cadastre and house numbers.' },
+      { kind: 'new', cs: 'Ke známým místům jde přidat odkazy, např. na listy archivu ČÚZK nebo kroniku.', en: 'Known places can have links, e.g. to sheets of the ČÚZK archive or a chronicle.' },
+      { kind: 'new', cs: 'Pravé tlačítko na mapě ukáže GPS souřadnice a otevře místo v Mapy.com nebo Google Maps.', en: 'A right click on the map shows the GPS coordinates and opens the place in Mapy.com or Google Maps.' },
+      { kind: 'improved', cs: 'Události v editoru mají nadpis podle typu (např. Bydliště 2).', en: 'Events in the editor are headed by their type (e.g. Residence 2).' },
+    ],
+  },
+  {
+    version: '1.2.0',
+    date: '2026-10-16',
+    title: { cs: 'Přílohy, zálohy a známá místa', en: 'Attachments, backups and known places' },
+    items: [
+      { kind: 'new', cs: 'Odkazy u osoby s kopií obrázku nebo dokumentu přímo do stromu, i vložením ze schránky.', en: 'Links of a person with a copy of an image or document stored in the tree, also pasted from the clipboard.' },
+      { kind: 'new', cs: 'Zálohy a export obsahují i přílohy (export jako ZIP).', en: 'Backups and the export include the attachments (export as ZIP).' },
+      { kind: 'new', cs: 'Souřadnice se při úpravě osoby a při importu synchronizují se známými místy; tlačítko pro synchronizaci celého stromu.', en: 'Coordinates are synced with the known places when a person is edited and on import; a button syncs the whole tree.' },
+      { kind: 'improved', cs: 'Nepřihlášení návštěvníci dostávají jen anonymní data a export je jen pro správce.', en: 'Visitors who are not logged in get only anonymized data, and the export is for the administrator only.' },
+      { kind: 'fixed', cs: 'Pomocné značky z MyHeritage se už nenačítají jako události.', en: 'Helper tags from MyHeritage are no longer read as events.' },
+    ],
+  },
+  {
+    version: '1.1.0',
+    date: '2026-10-13',
+    title: { cs: 'Grafický strom a anonymní režim', en: 'Graphical tree and anonymous mode' },
+    items: [
+      { kind: 'new', cs: 'Grafický strom: předci nahoře, potomci dole, posun a přiblížení.', en: 'Graphical tree: ancestors above, descendants below, pan and zoom.' },
+      { kind: 'new', cs: 'Detail osoby po klepnutí na značku na mapě.', en: 'A person detail after clicking a marker on the map.' },
+      { kind: 'new', cs: 'Anonymní režim: iniciály místo jmen, jen roky, skrytá místa.', en: 'Anonymous mode: initials instead of names, years only, places hidden.' },
+      { kind: 'new', cs: 'Bubliny s celým datem u roků života a s místem u událostí.', en: 'Tooltips with the full date at the years of life and the place at the events.' },
+      { kind: 'improved', cs: 'Menu a rozložení pro telefon a tablet; číslo verze v O aplikaci.', en: 'Menu and layout for phones and tablets; the version number in About.' },
+      { kind: 'fixed', cs: 'Příjmení se už nezobrazují v lomítkách.', en: 'Surnames are no longer shown in slashes.' },
+    ],
+  },
+  {
+    version: '1.0.0',
+    date: '2026-10-12',
+    title: { cs: 'První verze', en: 'First version' },
+    items: [
+      { kind: 'new', cs: 'Import souboru GEDCOM a uložení stromu na server.', en: 'GEDCOM import and saving the tree on the server.' },
+      { kind: 'new', cs: 'Mapa událostí, seznam a strom osob, úpravy osob.', en: 'A map of events, a list and tree of people, editing people.' },
+      { kind: 'new', cs: 'Známá místa se souřadnicemi, jejich import a export.', en: 'Known places with coordinates, their import and export.' },
+      { kind: 'new', cs: 'Přihlášení správce pro všechny změny a nastavení aplikace.', en: 'Administrator login for all changes, and the settings.' },
+    ],
+  },
+]
+
+export const LATEST_RELEASE = RELEASE_NOTES[0]!

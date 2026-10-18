@@ -15,6 +15,9 @@ const { t } = useT()
 const adminPanelOpen = ref(false)
 const menuOpen = ref(false)
 
+// The version from package.json (nuxt.config.ts → runtimeConfig.public.build); its release notes are on /release-notes
+const appVersion = (useRuntimeConfig().public.build as { version: string }).version
+
 const navLinks: { to: string; key: MessageKey }[] = [
   { to: '/', key: 'nav.home' },
   { to: '/map', key: 'nav.map' },
@@ -58,6 +61,7 @@ const pageTitle = computed(() => {
     case '/settings': return t('title.settings')
     case '/admin/locations': return t('title.locations')
     case '/admin/layers': return t('title.layers')
+    case '/release-notes': return t('title.releases')
     default: return t('app.name')
   }
 })
@@ -192,6 +196,9 @@ useHead({
           <p>© {{ new Date().getFullYear() }} {{ t('app.name') }}. {{ t('footer.rights') }}</p>
           <p class="mt-1">
             {{ t('footer.builtWith') }}
+          </p>
+          <p class="mt-1">
+            <NuxtLink to="/release-notes" class="underline hover:text-primary-600" data-footer-releases>{{ t('footer.version', { version: appVersion }) }} · {{ t('footer.releases') }}</NuxtLink>
           </p>
         </div>
       </div>

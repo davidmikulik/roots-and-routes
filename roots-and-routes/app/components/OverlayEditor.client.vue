@@ -236,13 +236,13 @@ onUnmounted(() => {
     <p class="mb-2 text-sm opacity-75">{{ t('overlay.hint') }}</p>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div>
-        <div class="mb-1 flex h-7 items-center text-xs font-semibold uppercase tracking-wide opacity-60">{{ t('overlay.sheet') }}</div>
+        <div class="mb-1 flex min-h-7 items-center text-xs font-semibold uppercase tracking-wide opacity-60">{{ t('overlay.sheet') }}</div>
         <div ref="sheetEl" class="h-80 w-full rounded border border-gray-300 dark:border-gray-600" data-sheet-map />
       </div>
       <div>
-        <div class="mb-1 flex h-7 flex-wrap items-center justify-between gap-2">
+        <div class="mb-1 flex min-h-7 flex-wrap items-center justify-between gap-2">
           <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ t('overlay.map') }}</span>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <template v-if="places?.length">
               <input v-model="placeQuery" list="overlay-places" class="w-36 rounded border px-2 py-0.5 text-xs bg-transparent" :placeholder="t('overlay.goToPlace')" :aria-label="t('overlay.goToPlace')" data-go-to-place @change="goToPlace" @keydown.enter.prevent="goToPlace">
               <datalist id="overlay-places">

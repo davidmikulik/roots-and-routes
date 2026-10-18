@@ -10,6 +10,7 @@ import { useAnonymize } from '~~/composables/useAnonymize'
 import { messages, type MessageKey } from '~~/i18n'
 import { useT } from '~~/composables/useT'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
+import { normalizeText } from '~~/utils/gedcom/names'
 import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
 
 const { t } = useT()
@@ -88,14 +89,28 @@ const allPeople = computed<AppPerson[]>(() => {
   return gedcomStore.getAllAppPersons()
 })
 
+// Family names (birth surname and surname after marriage) with the number of people, for the filter; none in the
+// anonymous mode, where the names are hidden
+const familyName = ref('')
+const familyNames = computed(() => {
+  const counts = new Map<string, number>()
+  for (const person of allPeople.value) for (const surname of anon.surnames(person)) counts.set(surname, (counts.get(surname) ?? 0) + 1)
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count, key: normalizeText(name) }))
+    .sort((a, b) => a.key.localeCompare(b.key))
+})
+watch(familyNames, (names) => { if (familyName.value && !names.some(entry => entry.name === familyName.value)) familyName.value = '' })
+
+// Search by given name, family name (birth or after marriage) or years; sorted by family name and given name.
+// In anonymous mode only what is displayed can be searched (useAnonymize), otherwise the search would reveal names.
 const filteredPeople = computed<AppPerson[]>(() => {
-  if (!searchQuery.value) return allPeople.value
-  const query = searchQuery.value.toLowerCase()
-  // In anonymous mode only what is displayed can be searched, otherwise the search would reveal the real names
-  return allPeople.value.filter(person => 
-    anon.personName(person).toLowerCase().includes(query) ||
-    (person.lifespan && person.lifespan.toLowerCase().includes(query))
-  )
+  const query = searchQuery.value.trim()
+  return allPeople.value
+    .filter(person => !familyName.value || anon.surnames(person).includes(familyName.value))
+    .filter(person => !query || anon.matchesName(person, query) || !!person.lifespan?.toLowerCase().includes(query.toLowerCase()))
+    .map(person => ({ person, key: anon.sortKey(person) }))
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(entry => entry.person)
 })
 
 const setViewMode = (mode: 'tree' | 'chart' | 'list') => {
@@ -320,6 +335,18 @@ const deletePerson = async (person: AppPerson) => {
         >
         <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
       </div>
+
+      <select
+        v-if="familyNames.length"
+        v-model="familyName"
+        class="px-3 py-2 rounded-lg border max-w-full"
+        :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-white border-gray-200 text-gray-900': !isDark }"
+        :aria-label="t('tree.familyName.label')"
+        data-family-name
+      >
+        <option value="">{{ t('tree.familyName.all') }}</option>
+        <option v-for="entry in familyNames" :key="entry.name" :value="entry.name">{{ entry.name }} ({{ entry.count }})</option>
+      </select>
       
       <template v-if="adminAuth.isAdmin.value">
         <button

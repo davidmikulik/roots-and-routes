@@ -108,16 +108,20 @@ const openCopy = async (path: string) => {
 }
 
 const submit = async () => {
+  if (!form.value.givenName.trim() && !form.value.surname.trim()) { nameMissing.value = true; return }
   const id = await props.editor.save()
   if (id) emit('saved', id)
 }
 const close = () => props.editor.close()
+// A given name or a surname is needed (people with only one of them are common in old records)
+const nameMissing = ref(false)
+watch(() => [form.value.givenName, form.value.surname], () => { nameMissing.value = false })
 
 // Esc closes the dialog wherever the focus is; the name field gets the focus when the dialog opens
 const onKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  nextTick(() => (document.querySelector('[data-person-editor] [data-field-name]') as HTMLInputElement | null)?.focus())
+  nextTick(() => (document.querySelector('[data-person-editor] [data-field-given]') as HTMLInputElement | null)?.focus())
 })
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -131,12 +135,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       </div>
       <p v-if="editor.note.value" class="mb-5 text-sm text-primary-700 dark:text-primary-300" data-relation-note>{{ editor.note.value }}</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label class="text-sm">{{ t('tree.field.fullName') }}
-          <input v-model="form.fullName" required class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="name" data-field-name>
+        <label class="text-sm">{{ t('tree.field.givenName') }}
+          <input v-model="form.givenName" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="given-name" data-field-given>
         </label>
-        <label class="text-sm">{{ t('tree.field.marriedName') }}
-          <input v-model="form.marriedName" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.marriedNamePlaceholder')" :title="t('tree.field.marriedNameHint')" data-field-married-name>
+        <label class="text-sm">{{ t('tree.field.surname') }}
+          <input v-model="form.surname" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="family-name" data-field-surname>
         </label>
+        <label class="text-sm">{{ t('tree.field.marriedSurname') }}
+          <input v-model="form.marriedSurname" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.marriedSurnamePlaceholder')" :title="t('tree.field.marriedSurnameHint')" data-field-married-surname>
+        </label>
+        <p v-if="nameMissing" class="text-xs text-amber-700 dark:text-amber-300 sm:col-span-2" data-name-missing>{{ t('tree.field.nameRequired') }}</p>
         <label class="text-sm">{{ t('tree.field.sex') }}
           <select v-model="form.sex" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-field-sex>
             <option value="">{{ t('tree.sex.unknown') }}</option><option value="F">{{ t('tree.sex.female') }}</option><option value="M">{{ t('tree.sex.male') }}</option>

@@ -67,17 +67,22 @@ const cardLabel = (id: string) => t('graph.card', { name: cardOf(id).name })
 // ---- Choosing the person in the middle
 const query = ref('')
 const pickerOpen = ref(false)
+// Sorted by family name and given name; found by given name, family name (birth or after marriage) and year of birth
 const people = computed(() =>
   [...(file.value?.individuals.values() ?? [])]
     .map((person) => {
       const year = person.birth?.date?.parsed?.getFullYear()
-      return { id: person.xrefId, label: `${anon.personName(person)}${year ? ` (${year})` : ''}` }
+      return { id: person.xrefId, person, year: year ? String(year) : '', label: `${anon.personName(person)}${year ? ` (${year})` : ''}`, key: anon.sortKey(person) }
     })
-    .sort((a, b) => a.label.localeCompare(b.label, appSettings.settings.value.language)),
+    .sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label, appSettings.settings.value.language)),
 )
 const results = computed(() => {
-  const text = query.value.trim().toLowerCase()
-  return (text ? people.value.filter(person => person.label.toLowerCase().includes(text)) : people.value).slice(0, 50)
+  const words = query.value.trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return people.value.slice(0, 50)
+  // A number is the year of birth ("novák 1850"), the other words the name
+  const yearWord = words.find(word => /^\d{1,4}$/.test(word))
+  const nameQuery = words.filter(word => word !== yearWord).join(' ')
+  return people.value.filter(entry => (!yearWord || entry.year.startsWith(yearWord)) && anon.matchesName(entry.person, nameQuery)).slice(0, 50)
 })
 const currentLabel = computed(() => (rootId.value ? cardOf(rootId.value).name : ''))
 const choose = (id: string) => {

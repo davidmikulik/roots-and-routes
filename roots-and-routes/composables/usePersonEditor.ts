@@ -6,7 +6,7 @@ import type { GedcomEvent, GedcomFile, GedcomIndividual } from '~~/types/gedcom'
 import { linksOf, type IndividualDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
 import { useT } from '~~/composables/useT'
 import { useAnonymize } from '~~/composables/useAnonymize'
-import { birthNameOf, formatPersonName, marriedNameOf } from '~~/utils/gedcom/names'
+import { birthNameOf, formatPersonName, marriedNameOf, nameSortKey, namePartsOf } from '~~/utils/gedcom/names'
 
 export type Relation = 'father' | 'mother' | 'partner' | 'child' | 'sibling'
 export const RELATIONS: Relation[] = ['father', 'mother', 'partner', 'child', 'sibling']
@@ -15,7 +15,7 @@ type Store = ReturnType<typeof useGedcomStore>
 
 export function createEmptyDraft(): IndividualDraft {
   return {
-    fullName: '', marriedName: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
+    givenName: '', surname: '', marriedSurname: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
     deathDate: '', deathPlace: '', deathCause: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
     marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
@@ -34,8 +34,9 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
   const firstPartner = partnerFamily ? (partnerFamily.husband === individual.xrefId ? partnerFamily.wife : partnerFamily.husband) : ''
   return {
     xrefId: individual.xrefId,
-    fullName: birthNameOf(individual.names)?.full || '',
-    marriedName: marriedNameOf(individual.names)?.full || '',
+    givenName: namePartsOf(birthNameOf(individual.names)).given,
+    surname: namePartsOf(birthNameOf(individual.names)).surname,
+    marriedSurname: namePartsOf(marriedNameOf(individual.names)).surname,
     sex: individual.sex,
     birthDate: formatDateInput(individual.birth?.date?.parsed),
     birthPlace: individual.birth?.place || '',
@@ -80,11 +81,15 @@ export function relationDraft(file: GedcomFile, anchor: GedcomIndividual, relati
   const draft = createEmptyDraft()
   const parents = anchor.familiesAsChild.map(id => file.families.get(id)).find(Boolean)
   const ownFamily = anchor.familiesAsSpouse.map(id => file.families.get(id)).find(Boolean)
+  // The birth surname of a person (the family name a child gets from the father)
+  const surnameOf = (id?: string) => (id ? namePartsOf(birthNameOf(file.individuals.get(id)?.names)).surname : '')
   switch (relation) {
     case 'father':
     case 'mother':
       draft.sex = relation === 'father' ? 'M' : 'F'
       draft.parentOf = anchor.xrefId
+      // The father passes the family name to the child
+      if (relation === 'father') draft.surname = surnameOf(anchor.xrefId)
       // The other parent becomes the partner: the same family, and the marriage can be filled in right away
       draft.spouseId = (relation === 'father' ? parents?.wife : parents?.husband) || ''
       break
@@ -101,10 +106,13 @@ export function relationDraft(file: GedcomFile, anchor: GedcomIndividual, relati
       } else {
         draft.fatherId = anchor.xrefId
       }
+      // The child's family name: the father's birth surname, otherwise the mother's current one
+      draft.surname = surnameOf(draft.fatherId) || namePartsOf(marriedNameOf(file.individuals.get(draft.motherId)?.names)).surname || surnameOf(draft.motherId)
       break
     case 'sibling':
       draft.fatherId = parents?.husband || ''
       draft.motherId = parents?.wife || ''
+      draft.surname = surnameOf(draft.fatherId) || surnameOf(anchor.xrefId)
       break
   }
   return draft
@@ -124,13 +132,13 @@ export const usePersonEditor = (store: Store) => {
     const person = store.state.value.file?.individuals.get(id)
     return person ? anon.personName(person) : id
   }
-  // People for the parent and partner choices, sorted by name
+  // People for the parent and partner choices, sorted by family name and given name
   const people = computed(() => store.getAllAppPersons()
     .map((person) => {
       const name = formatPersonName(person.names, t('name.born')) || person.fullName
-      return { id: person.id, label: person.lifespan ? `${name}, ${person.lifespan}` : name }
+      return { id: person.id, label: person.lifespan ? `${name}, ${person.lifespan}` : name, key: nameSortKey(person.names) }
     })
-    .sort((a, b) => a.label.localeCompare(b.label)))
+    .sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label)))
 
   const availability = (id: string): Record<Relation, boolean> => {
     const file = store.state.value.file
@@ -162,7 +170,7 @@ export const usePersonEditor = (store: Store) => {
 
   // Saves the draft; returns the person's id, or null when it failed (the error was shown)
   const save = async (): Promise<string | null> => {
-    if (!draft.value.fullName.trim() || saving.value) return null
+    if ((!draft.value.givenName.trim() && !draft.value.surname.trim()) || saving.value) return null
     saving.value = true
     try {
       const id = await store.savePerson({ ...draft.value, xrefId: editingId.value || undefined })

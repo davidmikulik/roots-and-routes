@@ -1,7 +1,7 @@
 import { useSettings } from '~~/composables/useSettings'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
-import { formatPersonName, primaryNameOf } from '~~/utils/gedcom/names'
+import { formatPersonName, nameMatches, nameSortKey, normalizeText, primaryNameOf, surnamesOf } from '~~/utils/gedcom/names'
 import type { GedcomName } from '~~/types/gedcom'
 
 // Anonymous mode: display-only masking of personal information (names → initials, dates → year, places hidden).
@@ -25,8 +25,20 @@ export const useAnonymize = () => {
     if (enabled.value) return name(primaryNameOf(names)?.full || '')
     return formatPersonName(names, t('name.born')) || '?'
   }
+  // Search by given name, birth surname or surname after marriage (utils/gedcom/names.ts). In the anonymous mode only
+  // what is displayed (the initials) can be searched, otherwise the search would reveal the real names.
+  const matchesName = (person: { names?: GedcomName[] } | null | undefined, query: string): boolean => {
+    if (!query.trim()) return true
+    if (enabled.value) return normalizeText(personName(person)).includes(normalizeText(query))
+    return nameMatches(person?.names || [], query)
+  }
+  // Sort key: family name, then given name; in the anonymous mode the shown initials
+  const sortKey = (person: { names?: GedcomName[] } | null | undefined): string =>
+    (enabled.value ? normalizeText(personName(person)) : nameSortKey(person?.names || []))
+  // Family names of a person for the family name filter; none in the anonymous mode
+  const surnames = (person: { names?: GedcomName[] } | null | undefined): string[] => (enabled.value ? [] : surnamesOf(person?.names || []))
   const date = (value = ''): string => (enabled.value ? value.match(/\b\d{4}\b/)?.[0] || '' : value)
   const place = (value = ''): string => (enabled.value ? '' : value)
 
-  return { enabled, name, personName, date, place }
+  return { enabled, name, personName, matchesName, sortKey, surnames, date, place }
 }

@@ -6,8 +6,8 @@ import { loadMapLayers } from '~~/server/utils/mapLayerStorage'
 import type { KnownLocation } from '~~/types/locations'
 
 export default defineEventHandler(async (event) => {
-  // Users who can edit change it (also when saving a person, see syncPersonLocations)
-  await requireActor(event, 'edit')
+  // Shared by all databases: administrators only (saving a person by others only reads it, see syncLocationsAfterEdit)
+  await requireActor(event, 'admin')
   const body = await readBody<{ locations?: unknown }>(event)
   if (!Array.isArray(body?.locations) || body.locations.length > 10000) {
     throw createError({ statusCode: 400, statusMessage: 'Expected a list of at most 10,000 locations' })

@@ -44,14 +44,18 @@ export async function requireActor(event: H3Event, minRole: AccessLevel = 'demo'
 
 // The level of a user on a database: administrators have "admin" everywhere; the owner has their role (an editor
 // manages their own database); a shared database the lower of the role and the shared level. The public database
-// is at least "demo" for everybody, visitors included.
+// is "demo" for visitors and the role "demo", and "read" (full data, no changes) for logged-in users with a higher
+// role; editing it needs a grant.
 export function levelOn(accounts: Accounts, actor: Actor | null, db: DatabaseRecord): AccessLevel | null {
-  const publicLevel: AccessLevel | null = accounts.publicDatabaseId === db.id ? 'demo' : null
-  if (!actor) return publicLevel
+  const isPublic = accounts.publicDatabaseId === db.id
+  if (!actor) return isPublic ? 'demo' : null
   if (actor.role === 'admin') return 'admin'
   if (db.ownerId === actor.id) return actor.role === 'edit' ? 'admin' : actor.role
   const grant = db.grants.find(candidate => candidate.userId === actor.id)
-  return grant ? lowerLevel(grant.level, actor.role) : publicLevel
+  const shared = grant ? lowerLevel(grant.level, actor.role) : null
+  const publicLevel: AccessLevel | null = isPublic ? lowerLevel('read', actor.role) : null
+  if (!shared) return publicLevel
+  return publicLevel && levelAtLeast(publicLevel, shared) ? publicLevel : shared
 }
 
 const usernameOf = (accounts: Accounts, id: string | null): string => accounts.users.find(user => user.id === id)?.username || ''

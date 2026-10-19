@@ -711,16 +711,20 @@ export const useGedcomStore = () => {
   }
 
   // After a person was edited: the catalog of known locations (/api/admin/locations) and the tree are synced, see
-  // syncPersonLocations. A failure does not stop saving the person; it is logged and kept in lastLocationSync.
+  // syncPersonLocations. The catalog is shared and changed by administrators only: for others the tree just takes
+  // coordinates from it. A failure does not stop saving the person; it is logged and kept in lastLocationSync.
   const syncLocationsAfterEdit = async (file: GedcomFile, events: (GedcomEvent | undefined)[], before: Set<string>): Promise<void> => {
     try {
       const { locations } = await $fetch<{ locations: KnownLocation[] }>('/api/admin/locations', { headers: adminAuth.authHeaders() })
       const result = syncPersonLocations(file, events, locations, before)
-      if (result.added || result.updated) {
+      const writesCatalog = adminAuth.isSystemAdmin.value
+      if (writesCatalog && (result.added || result.updated)) {
         await $fetch('/api/admin/locations', { method: 'PUT', headers: adminAuth.authHeaders(), body: { locations: result.catalog } })
       }
-      console.log(`[GEDCOM] Known locations: ${result.added} added, ${result.updated} updated, ${result.filled} filled, ${result.propagated} other events updated`)
-      lastLocationSync.value = { added: result.added, updated: result.updated, filled: result.filled, propagated: result.propagated, error: '' }
+      const added = writesCatalog ? result.added : 0
+      const updated = writesCatalog ? result.updated : 0
+      console.log(`[GEDCOM] Known locations: ${added} added, ${updated} updated, ${result.filled} filled, ${result.propagated} other events updated`)
+      lastLocationSync.value = { added, updated, filled: result.filled, propagated: result.propagated, error: '' }
     } catch (error: any) {
       console.error('[GEDCOM] Known locations could not be synced:', error)
       lastLocationSync.value = { added: 0, updated: 0, filled: 0, propagated: 0, error: error?.data?.statusMessage || error?.message || 'error' }

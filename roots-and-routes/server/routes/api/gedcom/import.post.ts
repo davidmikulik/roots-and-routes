@@ -9,7 +9,7 @@ import { databasePaths, requireDatabase } from '~~/server/utils/access'
 
 // Into the database of the request: replacing its tree needs the level "admin", analysing a file for a merge "edit"
 export default defineEventHandler(async (event) => {
-  const { db, level } = await requireDatabase(event, 'edit')
+  const { db, level, actor } = await requireDatabase(event, 'edit')
   const config = useRuntimeConfig()
   const maxFileSize = config.gedcom?.maxFileSize || 10 * 1024 * 1024
   let importStage = 'reading upload'
@@ -42,8 +42,9 @@ export default defineEventHandler(async (event) => {
     const learned = learnKnownLocations(knownLocations, parseResult.file)
     const placeCoordinates = getPlaceCoordinates(parseResult.file)
     const unresolvedLocations = uniqueLocations.filter(location => !placeCoordinates.get(normalizeLocationName(location))?.coordinates)
-    const addedLocations = learned.added
-    if (learned.added > 0 || learned.updated > 0) {
+    const addedLocations = actor?.role === 'admin' ? learned.added : 0
+    // The catalog is shared: only an administrator's import adds to it
+    if (actor?.role === 'admin' && (learned.added > 0 || learned.updated > 0)) {
       importStage = 'saving newly discovered locations to private Blob catalog'
       await saveKnownLocations(learned.catalog)
     }

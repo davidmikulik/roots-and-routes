@@ -33,8 +33,8 @@ export const useAdminAuth = () => {
   const canManage = computed(() => level.value === 'admin')
   // Users, map layers and every database
   const isSystemAdmin = computed(() => isLoggedIn.value && user.value?.role === 'admin')
-  // The shared catalog of known places (role, not the level on a database)
-  const canEditPlaces = computed(() => isLoggedIn.value && levelAtLeast(user.value?.role, 'edit'))
+  // The shared parts (known places, map layers) are changed by administrators only
+  const canEditPlaces = isSystemAdmin
   // What the loaded tree depends on: the store reloads when it changes
   const dataKey = computed(() => `${token.value ? user.value?.id : ''}|${isLoggedIn.value ? databaseId.value : ''}|${canRead.value}`)
 

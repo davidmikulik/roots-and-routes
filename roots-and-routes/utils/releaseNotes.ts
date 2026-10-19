@@ -20,6 +20,15 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.8.1',
+    date: '2026-10-19',
+    title: { cs: 'Veřejný rodokmen pro přihlášené a známá místa', en: 'The public family tree for logged-in users and known places' },
+    items: [
+      { kind: 'fixed', cs: 'Přihlášený uživatel s rolí číst nebo editovat vidí veřejný rodokmen celý, ne jen anonymizovaný. Upravovat ho může jen ten, komu ho přidělíte k editaci.', en: 'A logged-in user with the role read or edit sees the public family tree in full, not only anonymized. Only those it is shared with for editing can change it.' },
+      { kind: 'improved', cs: 'Známá místa upravuje jen administrátor. Ostatním se při úpravě osoby souřadnice z katalogu jen doplní.', en: 'Known places are changed by the administrator only. For others, editing a person only fills in coordinates from the catalog.' },
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-10-19',
     title: { cs: 'Uživatelé, oprávnění a více rodokmenů', en: 'Users, permissions and several family trees' },

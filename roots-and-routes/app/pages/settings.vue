@@ -30,6 +30,12 @@ const sections = [
   { id: 'about', icon: 'ℹ️' },
 ] as const
 
+// /settings?section=data (the administrator's menu links to the backups)
+const settingsRoute = useRoute()
+watch(() => settingsRoute.query.section, (section) => {
+  if (typeof section === 'string' && sections.some(item => item.id === section)) activeSection.value = section
+}, { immediate: true })
+
 const themeOptions = [
   { value: 'light', icon: '☀️' },
   { value: 'dark', icon: '🌙' },
@@ -239,12 +245,14 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
           </h2>
 
           <NuxtLink
+            v-if="adminAuth.isAdmin.value"
             to="/admin/locations"
             class="mb-6 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
           >
             {{ t('settings.general.locations') }}
           </NuxtLink>
           <NuxtLink
+            v-if="adminAuth.isAdmin.value"
             to="/admin/layers"
             class="mb-6 ml-3 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
           >

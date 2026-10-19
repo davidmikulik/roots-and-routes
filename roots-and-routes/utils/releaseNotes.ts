@@ -20,6 +20,17 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.6.0',
+    date: '2026-10-18',
+    title: { cs: 'Úvodní stránka a menu správce', en: 'Home page and the administrator menu' },
+    items: [
+      { kind: 'improved', cs: 'Úvodní stránka je pro návštěvníky: přehled aplikace, cesta na mapu a do grafického stromu, karty funkcí jsou odkazy.', en: 'The home page is for visitors: what the app offers, the way to the map and the graphical tree, the feature cards are links.' },
+      { kind: 'new', cs: 'Po přihlášení správce je pod zámkem v hlavičce menu Správa: import a export GEDCOM, známá místa, mapové vrstvy, zálohy a data.', en: 'Once the administrator logs in, the lock in the header opens an Administration menu: GEDCOM import and export, known places, map layers, backups and data.' },
+      { kind: 'improved', cs: 'Položku GEDCOM v menu, import na mapě a odkazy na správu v Nastavení vidí jen přihlášený správce.', en: 'The GEDCOM menu item, the import on the map and the administration links in Settings are shown only to the logged-in administrator.' },
+      { kind: 'improved', cs: 'Novinky jsou v Nastavení → O aplikaci.', en: 'Release notes are in Settings → About.' },
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-10-18',
     title: { cs: 'Jména, data a detail osoby', en: 'Names, dates and the person detail' },

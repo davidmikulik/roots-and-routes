@@ -117,7 +117,7 @@ const openMenu = (value: { id: string; x: number; y: number }) => { menu.value =
       <div class="mb-4 text-4xl">🌳</div>
       <h3 class="mb-2 text-xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('graph.empty.title') }}</h3>
       <p class="mb-6 text-lg opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">{{ t('graph.empty.text') }}</p>
-      <NuxtLink to="/gedcom" class="inline-block rounded-lg bg-primary-600 px-8 py-4 text-lg font-medium text-white transition-colors hover:bg-primary-700">
+      <NuxtLink v-if="adminAuth.isAdmin.value" to="/gedcom" class="inline-block rounded-lg bg-primary-600 px-8 py-4 text-lg font-medium text-white transition-colors hover:bg-primary-700">
         {{ t('graph.empty.import') }}
       </NuxtLink>
     </div>

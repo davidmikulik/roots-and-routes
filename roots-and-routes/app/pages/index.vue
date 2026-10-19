@@ -1,20 +1,19 @@
 <script setup lang="ts">
+// Home page: what the app offers and the way to the map and the trees. It has no administrator actions (import,
+// administration); the administrator finds them in the lock panel in the header once logged in (AdminMenu.vue).
+// What changed in each version is in Settings → About.
 import { useColorMode } from '#imports'
 import { useT } from '~~/composables/useT'
-import { useReleaseNotes } from '~~/composables/useReleaseNotes'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
 
 const { t } = useT()
-// The latest release on the home page; whether it was seen is known only in the browser (localStorage)
-const notes = useReleaseNotes()
-onMounted(() => notes.restoreSeen())
 
 const features = computed(() => [
   { icon: '🗺️', title: t('home.feature.map.title'), description: t('home.feature.map.desc'), route: '/map' },
-  { icon: '🌳', title: t('home.feature.tree.title'), description: t('home.feature.tree.desc'), route: '/tree' },
-  { icon: '📄', title: t('home.feature.gedcom.title'), description: t('home.feature.gedcom.desc'), route: '/gedcom' },
+  { icon: '🌳', title: t('home.feature.tree.title'), description: t('home.feature.tree.desc'), route: '/graph' },
+  { icon: '✏️', title: t('home.feature.gedcom.title'), description: t('home.feature.gedcom.desc'), route: '/tree' },
   { icon: '🔍', title: t('home.feature.search.title'), description: t('home.feature.search.desc'), route: '/tree' },
 ])
 </script>
@@ -28,49 +27,36 @@ const features = computed(() => [
             Roots & Routes
           </span>
         </h1>
-        
+
         <p class="text-xl md:text-2xl mb-4" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
           {{ t('home.welcome') }}
         </p>
-        
+
         <p class="text-lg opacity-80 max-w-2xl mx-auto mb-12" :class="{ 'text-gray-400': isDark, 'text-gray-500': !isDark }">
           {{ t('home.intro') }}
         </p>
-        
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <NuxtLink
-            to="/gedcom"
-            class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl bg-primary-600 hover:bg-primary-700 text-white"
-          >
-            <span class="mr-2">📁</span>
-            {{ t('home.importGedcom') }}
-          </NuxtLink>
-          
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center" data-home-actions>
           <NuxtLink
             to="/map"
+            class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl bg-primary-600 hover:bg-primary-700 text-white"
+          >
+            <span class="mr-2">🗺️</span>
+            {{ t('home.viewMap') }}
+          </NuxtLink>
+
+          <NuxtLink
+            to="/graph"
             class="inline-flex items-center justify-center px-8 py-3 text-lg font-medium rounded-lg transition-all duration-200 border-2 shadow-lg hover:shadow-xl"
             :class="{
               'bg-transparent hover:bg-primary-50 border-primary-600 text-primary-600': !isDark,
               'bg-transparent hover:bg-gray-800 border-gray-600 text-white': isDark,
             }"
           >
-            <span class="mr-2">🗺️</span>
-            {{ t('home.viewMap') }}
+            <span class="mr-2">🌳</span>
+            {{ t('home.viewGraph') }}
           </NuxtLink>
         </div>
-      </div>
-    </section>
-
-    <!-- What's new: the latest release (utils/releaseNotes.ts); "New" until the release notes page was opened -->
-    <section class="pb-16 px-4 sm:px-6 lg:px-8" data-home-releases>
-      <div class="max-w-3xl mx-auto rounded-2xl border p-6 sm:p-8" :class="{ 'border-gray-700 bg-gray-800/60': isDark, 'border-gray-200 bg-white shadow-sm': !isDark }">
-        <div class="mb-1 flex flex-wrap items-center gap-3">
-          <h2 class="text-2xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('releases.latest', { version: notes.latest.version }) }}</h2>
-          <span v-if="notes.hasUnseen.value" class="rounded-full bg-primary-600 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white" data-release-new>{{ t('releases.newBadge') }}</span>
-        </div>
-        <p class="mb-5 text-sm" :class="{ 'text-gray-400': isDark, 'text-gray-500': !isDark }">{{ notes.titleOf(notes.latest) }} · {{ notes.formatDate(notes.latest.date) }}</p>
-        <ReleaseNotesList :releases="[notes.latest]" hide-heading />
-        <NuxtLink to="/release-notes" class="mt-6 inline-block font-medium text-primary-700 underline dark:text-primary-300" data-release-link>{{ t('releases.all') }}</NuxtLink>
       </div>
     </section>
 
@@ -79,16 +65,18 @@ const features = computed(() => [
         <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
           {{ t('home.coreFeatures') }}
         </h2>
-        
+
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          <div
-            v-for="(feature, index) in features"
+          <NuxtLink
+            v-for="feature in features"
             :key="feature.title"
-            class="p-8 rounded-2xl transition-all duration-300"
+            :to="feature.route"
+            class="block p-8 rounded-2xl transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
             :class="{
-              'bg-gray-700/50': isDark,
+              'bg-gray-700/50 hover:bg-gray-700': isDark,
               'bg-white': !isDark,
             }"
+            data-home-feature
           >
             <div class="text-5xl mb-4">{{ feature.icon }}</div>
             <h3 class="text-xl font-bold mb-3" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
@@ -97,72 +85,6 @@ const features = computed(() => [
             <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
               {{ feature.description }}
             </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="py-16 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-7xl mx-auto">
-        <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-          {{ t('home.howItWorks') }}
-        </h2>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-12 items-center">
-          <div class="text-center">
-            <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-primary-100 flex items-center justify-center">
-              <span class="text-4xl">1</span>
-            </div>
-            <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ t('home.step1.title') }}
-            </h3>
-            <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              {{ t('home.step1.desc') }}
-            </p>
-          </div>
-          
-          <div class="text-center">
-            <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-primary-100 flex items-center justify-center">
-              <span class="text-4xl">2</span>
-            </div>
-            <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ t('home.step2.title') }}
-            </h3>
-            <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              {{ t('home.step2.desc') }}
-            </p>
-          </div>
-          
-          <div class="text-center">
-            <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-primary-100 flex items-center justify-center">
-              <span class="text-4xl">3</span>
-            </div>
-            <h3 class="text-2xl font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ t('home.step3.title') }}
-            </h3>
-            <p class="opacity-80" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-              {{ t('home.step3.desc') }}
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="py-16 px-4 sm:px-6 lg:px-8" :class="{ 'bg-gray-800': isDark, 'bg-gray-50': !isDark }">
-      <div class="max-w-7xl mx-auto">
-        <h2 class="text-3xl font-bold text-center mb-16" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-          {{ t('home.ctaTitle') }}
-        </h2>
-        <p class="text-lg opacity-80 mb-8 max-w-2xl mx-auto text-center" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">
-          {{ t('home.ctaText') }}
-        </p>
-        <div class="text-center">
-          <NuxtLink
-            to="/gedcom"
-            class="inline-flex items-center justify-center px-10 py-4 text-xl font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white transition-colors"
-          >
-            <span class="mr-3">🚀</span>
-            {{ t('home.getStarted') }}
           </NuxtLink>
         </div>
       </div>

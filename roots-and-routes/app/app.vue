@@ -15,16 +15,16 @@ const { t } = useT()
 const adminPanelOpen = ref(false)
 const menuOpen = ref(false)
 
-// The version from package.json (nuxt.config.ts → runtimeConfig.public.build); its release notes are on /release-notes
-const appVersion = (useRuntimeConfig().public.build as { version: string }).version
-
-const navLinks: { to: string; key: MessageKey }[] = [
+// GEDCOM (import, merge, export) is for the administrator only; the other administration is in the lock panel
+// (AdminMenu.vue) once logged in
+const allNavLinks: { to: string; key: MessageKey; admin?: boolean }[] = [
   { to: '/', key: 'nav.home' },
   { to: '/map', key: 'nav.map' },
   { to: '/tree', key: 'nav.tree' },
   { to: '/graph', key: 'nav.graph' },
-  { to: '/gedcom', key: 'nav.gedcom' },
+  { to: '/gedcom', key: 'nav.gedcom', admin: true },
 ]
+const navLinks = computed(() => allNavLinks.filter(link => !link.admin || adminAuth.isAdmin.value))
 
 const toggleMenu = () => {
   menuOpen.value = !menuOpen.value
@@ -123,7 +123,9 @@ useHead({
               class="absolute right-0 top-12 z-50 w-80 p-4 rounded-lg border shadow-lg"
               :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-white border-gray-200 text-gray-900': !isDark }"
             >
-              <AdminLogin @done="adminPanelOpen = false" />
+              <AdminMenu v-if="adminAuth.isAdmin.value" @navigate="adminPanelOpen = false" />
+              <!-- After logging in the panel stays open with the administrator's menu -->
+              <AdminLogin v-else @done="adminPanelOpen = adminAuth.isAdmin.value" />
             </div>
             <button
               @click="toggleDark"
@@ -197,9 +199,7 @@ useHead({
           <p class="mt-1">
             {{ t('footer.builtWith') }}
           </p>
-          <p class="mt-1">
-            <NuxtLink to="/release-notes" class="underline hover:text-primary-600" data-footer-releases>{{ t('footer.version', { version: appVersion }) }} · {{ t('footer.releases') }}</NuxtLink>
-          </p>
+
         </div>
       </div>
     </footer>

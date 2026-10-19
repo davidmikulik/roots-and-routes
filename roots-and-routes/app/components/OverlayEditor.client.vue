@@ -13,6 +13,7 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Static from 'ol/source/ImageStatic'
 import XYZ from 'ol/source/XYZ'
+import TileWMS from 'ol/source/TileWMS'
 import Projection from 'ol/proj/Projection'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
@@ -25,7 +26,7 @@ import type { MapBrowserEvent } from 'ol'
 import type { ControlPoint } from '~~/types/mapLayers'
 import { affineFromPoints, residuals } from '~~/utils/map/affine'
 import { createOverlayImageLayer } from '~~/utils/map/overlayLayer'
-import { BASE_LAYERS } from '~~/utils/map/layers'
+import { BASE_LAYERS, OVERLAY_LAYERS } from '~~/utils/map/layers'
 import { MAX_POINTS, MIN_POINTS } from '~~/utils/map/mapLayers'
 import { useT } from '~~/composables/useT'
 import type { MessageKey } from '~~/i18n'
@@ -146,9 +147,30 @@ const goToPlace = () => {
 }
 
 watch(opacity, () => previewLayer?.setOpacity(opacity.value / 100))
+// "Katastrální mapa": today's parcels of ČÚZK (a transparent WMS, the same as on the map) over OpenStreetMap. It lies
+// above the preview of the sheet, so the parcel borders can be compared with the sheet. Drawn from zoom 14 up.
+const CADASTRE = OVERLAY_LAYERS.find(layer => layer.id === 'kn')!
+const CADASTRE_CHOICE = 'cadastre'
+const cadastreLayer = new TileLayer({
+  visible: false,
+  minZoom: CADASTRE.minZoom,
+  zIndex: 10,
+  source: new TileWMS({
+    url: CADASTRE.url,
+    params: { LAYERS: CADASTRE.layers, TRANSPARENT: CADASTRE.transparent, FORMAT: 'image/png', VERSION: '1.3.0' },
+    projection: 'EPSG:3857',
+    attributions: CADASTRE.attribution,
+    crossOrigin: 'anonymous',
+  }),
+})
+const geoZoom = ref(0)
+const cadastreTooFar = computed(() => baseLayerId.value === CADASTRE_CHOICE && geoZoom.value < (CADASTRE.minZoom ?? 0))
+
 watch(baseLayerId, () => {
-  const layer = BASE_LAYERS.find(l => l.id === baseLayerId.value) ?? BASE_LAYERS[0]!
+  const cadastre = baseLayerId.value === CADASTRE_CHOICE
+  const layer = (cadastre ? undefined : BASE_LAYERS.find(l => l.id === baseLayerId.value)) ?? BASE_LAYERS[0]!
   geoBase.setSource(new XYZ({ url: layer.url, maxZoom: layer.maxZoom, crossOrigin: 'anonymous' }))
+  cadastreLayer.setVisible(cadastre)
 })
 
 const geoBase = new TileLayer({ source: new XYZ({ url: BASE_LAYERS[0]!.url, maxZoom: BASE_LAYERS[0]!.maxZoom, crossOrigin: 'anonymous' }) })
@@ -203,12 +225,16 @@ onMounted(async () => {
   const start = initialGeoView()
   geoMap = new OlMap({
     target: geoEl.value,
-    layers: [geoBase, geoVector],
+    layers: [geoBase, cadastreLayer, geoVector],
     view: new View({ center: start.center, zoom: start.zoom, maxZoom: 20 }),
     controls: defaultControls(),
   })
   if (start.extent) geoMap.getView().fit(start.extent, { padding: [40, 40, 40, 40], maxZoom: 17 })
   geoMap.addInteraction(dragging(geoVector, 'geo'))
+  geoVector.setZIndex(20)
+  const syncZoom = () => { geoZoom.value = geoMap?.getView().getZoom() ?? 0 }
+  syncZoom()
+  geoMap.on('moveend', syncZoom)
   geoMap.on('singleclick', (e) => { if (!onMarker(geoMap!, e)) addHalf({ x: e.coordinate[0]!, y: e.coordinate[1]! }) })
   redraw()
   window.addEventListener('keydown', onKeydown, true)
@@ -252,8 +278,10 @@ onUnmounted(() => {
           </template>
           <select v-model="baseLayerId" class="w-auto rounded border px-2 py-0.5 text-xs bg-transparent" :aria-label="t('map.layers.base')">
             <option v-for="layer in BASE_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }}</option>
+            <option :value="CADASTRE_CHOICE" data-cadastre-option>{{ t('overlay.cadastre') }}</option>
           </select>
         </div>
+        <p v-if="cadastreTooFar" class="mt-1 text-xs text-amber-700 dark:text-amber-300" data-cadastre-hint>{{ t('overlay.cadastreZoom') }}</p>
       </div>
     </div>
 

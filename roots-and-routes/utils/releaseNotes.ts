@@ -20,6 +20,14 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.7.0',
+    date: '2026-10-19',
+    title: { cs: 'Katastrální mapa při umísťování listů', en: 'Cadastral map when placing sheets' },
+    items: [
+      { kind: 'new', cs: 'Při umísťování listu na mapu (Mapové vrstvy) jde jako současnou mapu zvolit i Katastrální mapu. Hranice dnešních parcel jsou vidět nad náhledem listu, takže se podle nich dají přesně umístit body.', en: 'When placing a sheet on the map (Map layers), the Cadastral map can be chosen as the current map. Today\'s parcel borders are shown over the preview of the sheet, so points can be placed precisely along them.' },
+    ],
+  },
+  {
     version: '1.6.0',
     date: '2026-10-18',
     title: { cs: 'Úvodní stránka a menu správce', en: 'Home page and the administrator menu' },

@@ -1,6 +1,6 @@
 {
   "name": "roots-and-routes",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Genealogy application for visualizing family trees on maps with GEDCOM support",
   "private": true,
   "type": "module",

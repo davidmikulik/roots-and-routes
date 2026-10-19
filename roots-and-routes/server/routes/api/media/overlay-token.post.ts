@@ -2,7 +2,7 @@
 // tens of MB and a Vercel function body is limited to ~4.5 MB, so they cannot go through /api/media/upload.
 // The upload is for a bought copy the administrator provides; the app never downloads anything from an archive.
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
-import { tokenMatchesAdmin } from '~~/server/utils/adminAuth'
+import { actorFromToken } from '~~/server/utils/access'
 import { requireBlobToken } from '~~/server/utils/storage'
 
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
@@ -14,9 +14,10 @@ export default defineEventHandler(async (event) => {
     body,
     request: toWebRequest(event),
     token: requireBlobToken(),
-    // The browser sends the admin token as clientPayload; Vercel's completion callback does not reach this branch
+    // The browser sends its session token as clientPayload (administrators only, the layers are shared); Vercel's
+    // completion callback does not reach this branch
     onBeforeGenerateToken: async (pathname, clientPayload) => {
-      if (!tokenMatchesAdmin(clientPayload || '')) throw createError({ statusCode: 401, statusMessage: 'Administrator authentication required' })
+      if ((await actorFromToken(clientPayload || ''))?.role !== 'admin') throw createError({ statusCode: 401, statusMessage: 'Administrator authentication required' })
       if (!/^uploads\/gedcom\/media\/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$/.test(pathname)) {
         throw createError({ statusCode: 400, statusMessage: 'Unexpected upload path' })
       }

@@ -20,7 +20,7 @@ Aplikace je v `roots-and-routes/`. Architekturu popisuje `AGENTS.md` v kořeni r
 
 ## 2. Ověř odpověď serveru
 
-Bez admin tokenu vrací `GET /api/gedcom/get` anonymní kopii (`data.anonymized: true`, iniciály, žádné souřadnice). Prázdná mapa u nepřihlášeného je proto v pořádku. V odpovědi `GET /api/gedcom/get` musí být `data.file.individuals` **pole dvojic** `[["@I1@", {...}], ...]`. Pokud je to objekt `{}`, je rozbitá serializace.
+Bez oprávnění `read` na základně (nepřihlášený, `demo`) vrací `GET /api/gedcom/get` anonymní kopii veřejné nebo vybrané základny (`X-Database`) (`data.anonymized: true`, iniciály, žádné souřadnice). Prázdná mapa u nepřihlášeného je proto v pořádku. V odpovědi `GET /api/gedcom/get` musí být `data.file.individuals` **pole dvojic** `[["@I1@", {...}], ...]`. Pokud je to objekt `{}`, je rozbitá serializace.
 
 V konzoli prohlížeče:
 ```js

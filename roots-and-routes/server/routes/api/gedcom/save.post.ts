@@ -1,28 +1,25 @@
-// GEDCOM Save API Endpoint - save parsed GEDCOM data to server
+// GEDCOM Save API Endpoint - saves the tree of the database of the request (level "edit")
 import { saveParsedGedcom } from '~~/server/utils/storage'
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { databasePaths, requireDatabase } from '~~/server/utils/access'
 import { deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  const { db } = await requireDatabase(event, 'edit')
   try {
-    const body = await readBody<{ fileId: string; fileData: SerializedGedcomFile }>(event)
-    
-    if (!body.fileId) {
-      throw createError({ statusCode: 400, statusMessage: 'fileId is required' })
-    }
-    
+    const body = await readBody<{ fileId?: string; fileData: SerializedGedcomFile }>(event)
+
     if (!body.fileData) {
       throw createError({ statusCode: 400, statusMessage: 'fileData is required' })
     }
-    
-    await saveParsedGedcom(deserializeGedcomFile(body.fileData), body.fileId)
-    
+
+    await saveParsedGedcom(deserializeGedcomFile(body.fileData), databasePaths(db).parsed)
+
     return {
       success: true,
       message: 'GEDCOM data saved successfully',
       data: {
-        fileId: body.fileId
+        fileId: 'current',
+        databaseId: db.id,
       },
       timestamp: new Date().toISOString(),
     }

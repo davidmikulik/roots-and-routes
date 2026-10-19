@@ -1,4 +1,4 @@
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { requireActor } from '~~/server/utils/access'
 import { saveKnownLocations } from '~~/server/utils/locationStorage'
 import { normalizeLocationName } from '~~/utils/gedcom/locations'
 import { parsePlaceLink } from '~~/utils/gedcom/archiveMaps'
@@ -6,7 +6,8 @@ import { loadMapLayers } from '~~/server/utils/mapLayerStorage'
 import type { KnownLocation } from '~~/types/locations'
 
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  // Users who can edit change it (also when saving a person, see syncPersonLocations)
+  await requireActor(event, 'edit')
   const body = await readBody<{ locations?: unknown }>(event)
   if (!Array.isArray(body?.locations) || body.locations.length > 10000) {
     throw createError({ statusCode: 400, statusMessage: 'Expected a list of at most 10,000 locations' })

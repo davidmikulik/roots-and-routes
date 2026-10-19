@@ -11,7 +11,7 @@ Jediný klientský store je `composables/useGedcomStore.ts` (`useState('gedcom-s
 
 ```ts
 const doSomething = async (...): Promise<void> => {
-  requireEditable()                        // 1. jen admin a nikdy na anonymních datech
+  requireEditable()                        // 1. jen s oprávněním edit a nikdy na anonymních datech
   const file = state.value.file
   if (!file) return
   // 2. změň file.individuals / file.families (jsou to Map) a udrž vazby oběma směry:
@@ -31,10 +31,10 @@ Novou funkci přidej do objektu, který `useGedcomStore()` vrací.
 ## Pravidla
 
 - **`persist`** podle nastavení `data.autoSave` buď hned uloží (`POST /api/gedcom/save`), nebo nastaví `state.dirty`. Uživatel pak ukládá tlačítkem (`saveNow`). Dokud je `dirty`, `refreshFromServer` nepřepisuje data a `app.vue` varuje před zavřením stránky.
-- **Každý požadavek** na server s mutací posílá `headers: adminAuth.authHeaders()`.
+- **Každý požadavek** na server s mutací posílá `headers: adminAuth.authHeaders(state.value.databaseId)`, aby šel do základny, ze které je strom načtený.
 - **`GedcomFile` obsahuje `Map` a `Date`.** Přes JSON vždy posílej `serializeGedcomFile` / `deserializeGedcomFile` (`utils/gedcom/serialize.ts`). Nové pole typu `Date` v `types/gedcom.ts` přidej do `DATE_KEYS`.
 - **Jména:** `names[].full` je bez lomítek. Rozklad a zápis GEDCOM jmen dělají `parseGedcomName` / `nameToGedcom` (`utils/gedcom/names.ts`).
-- **UI:** tlačítka pro editaci skryj přes `adminAuth.isAdmin.value`.
+- **UI:** tlačítka pro editaci skryj přes `adminAuth.canEdit.value` (nahrazení stromu a obnova záloh `canManage`).
 - Před riskantní hromadnou změnou zvaž zálohu: `POST /api/admin/backups` (vzor `mergeFile`).
 
 ## Ověření

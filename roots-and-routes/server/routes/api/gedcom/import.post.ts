@@ -1,15 +1,15 @@
 // GEDCOM Import API Endpoint
 import { parseGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations, getPlaceCoordinates, getUniqueGedcomLocations, learnKnownLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
-import { validateFileSize, isGedcomFile, saveParsedGedcom, uploadGedcomFile } from '~~/server/utils/storage'
+import { validateFileSize, isGedcomFile, saveParsedGedcom, saveOriginalGedcom } from '~~/server/utils/storage'
 import { createBackup, clampBackupCount } from '~~/server/utils/backups'
 import { loadKnownLocations, saveKnownLocations } from '~~/server/utils/locationStorage'
 import type { GedcomParseResult, GedcomFile } from '~~/types'
-import type { UploadedFile } from '~~/types'
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { databasePaths, requireDatabase } from '~~/server/utils/access'
 
+// Into the database of the request: replacing its tree needs the level "admin", analysing a file for a merge "edit"
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  const { db, level } = await requireDatabase(event, 'edit')
   const config = useRuntimeConfig()
   const maxFileSize = config.gedcom?.maxFileSize || 10 * 1024 * 1024
   let importStage = 'reading upload'
@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
     const field = (name: string): string => body.find(part => part.name === name && !part.filename)?.data.toString('utf8') || ''
     // 'merge' only analyses the file: the client merges it with the current tree and saves the result itself
     const analyseOnly = field('mode') === 'merge'
+    if (!analyseOnly && level !== 'admin') throw createError({ statusCode: 403, statusMessage: 'Replacing the tree needs the permission to administer the database' })
     if (!fileData) throw createError({ statusCode: 400, statusMessage: 'No file provided' })
     const file = fileData.data
     const filename = fileData.filename || 'unknown.ged'
@@ -47,27 +48,26 @@ export default defineEventHandler(async (event) => {
       await saveKnownLocations(learned.catalog)
     }
     
-    // Use a fixed file ID for single-user mode
     const fixedFileId = 'current'
-    let uploadedFile: UploadedFile | null = null
+    const paths = databasePaths(db)
     let backupId: string | null = null
     if (!analyseOnly) {
       if (field('backupOnImport') === 'true') {
         importStage = 'backing up the current tree'
-        backupId = await createBackup(clampBackupCount(field('backupCount')))
+        backupId = await createBackup(db, clampBackupCount(field('backupCount')))
       }
       importStage = 'saving GEDCOM file to server'
-      uploadedFile = await uploadGedcomFile(file, filename, { overwrite: true, fileId: fixedFileId })
+      await saveOriginalGedcom(paths.original, file)
 
       importStage = 'saving parsed GEDCOM data to server'
-      await saveParsedGedcom(parseResult.file, fixedFileId)
+      await saveParsedGedcom(parseResult.file, paths.parsed)
     }
 
     return {
       success: true,
       message: 'GEDCOM file imported successfully',
       data: {
-        file: { id: fixedFileId, name: uploadedFile?.name || filename, path: uploadedFile?.path },
+        file: { id: fixedFileId, name: filename, databaseId: db.id },
         backupId,
         locations: { unique: uniqueLocations, matched: matchedLocations, unresolved: unresolvedLocations, added: addedLocations, updated: learned.updated },
       },

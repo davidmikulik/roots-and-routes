@@ -3,29 +3,17 @@ import { writeGedcom } from '~~/utils/gedcom/parser'
 import { birthNameOf, marriedNameOf } from '~~/utils/gedcom/names'
 import { loadParsedGedcom } from '~~/server/utils/storage'
 import type { GedcomFile } from '~~/types'
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { databasePaths, requireDatabase } from '~~/server/utils/access'
 
-// Full data: administrator only, like the import
+// Full data of the database of the request: from the level "read" up
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  const { db } = await requireDatabase(event, 'read')
   setResponseHeaders(event, { 'cache-control': 'private, no-store' })
   try {
     const query = getQuery(event)
-    const fileId = query.fileId as string
-    const userId = query.userId as string | undefined
     const format = query.format as 'gedcom' | 'json' | 'csv' || 'gedcom'
-    let gedcomFile: GedcomFile | null = null
-    if (fileId) {
-      gedcomFile = await loadParsedGedcom(fileId, userId)
-      if (!gedcomFile) throw createError({ statusCode: 404, statusMessage: 'File not found' })
-    } else {
-      gedcomFile = {
-        version: '5.5', encoding: 'UTF-8', source: 'Roots & Routes', date: new Date(),
-        individuals: new Map(), families: new Map(), sources: new Map(), repositories: new Map(),
-        multimedia: new Map(), notes: new Map(),
-        metadata: { totalIndividuals: 0, totalFamilies: 0, totalSources: 0, totalRepositories: 0, totalMultimedia: 0, totalNotes: 0, totalGenerations: 0 },
-      }
-    }
+    const gedcomFile: GedcomFile | null = await loadParsedGedcom(databasePaths(db).parsed)
+    if (!gedcomFile) throw createError({ statusCode: 404, statusMessage: 'File not found' })
     switch (format) {
       case 'gedcom':
         const exportFile: GedcomFile = {

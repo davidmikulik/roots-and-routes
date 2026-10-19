@@ -43,7 +43,7 @@ const storedKey = computed(() => links.value.map(link => link.file).filter(isSto
 watch(storedKey, async (key) => {
   release()
   failed.value = new Set()
-  if (!key || !adminAuth.isAdmin.value || !import.meta.client) return
+  if (!key || !adminAuth.canRead.value || !import.meta.client) return
   const loaded = new Map<string, string>()
   const missing = new Set<string>()
   await Promise.all(key.split('|').map(async (path) => {

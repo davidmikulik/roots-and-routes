@@ -1,38 +1,23 @@
-// GEDCOM Delete API Endpoint - delete GEDCOM data from server
+// GEDCOM Delete API Endpoint - deletes the tree of the database of the request (level "admin"); the database itself,
+// its backups and attachments stay
 import { deleteFile } from '~~/server/utils/storage'
-import { getUploadDir } from '~~/server/utils/storage'
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { databasePaths, requireDatabase } from '~~/server/utils/access'
 
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  const { db } = await requireDatabase(event, 'admin')
   try {
-    const body = await readBody<{ fileId: string }>(event)
-    
-    if (!body.fileId) {
-      throw createError({ statusCode: 400, statusMessage: 'fileId is required' })
+    const paths = databasePaths(db)
+    // Both the original file and the parsed data; one of them may be missing
+    for (const path of [paths.parsed, paths.original]) {
+      if (!await deleteFile(path)) console.warn(`Failed to delete ${path}`)
     }
-    
-    // Delete both the original file and the parsed data
-    const parsedPath = `${getUploadDir()}/parsed/${body.fileId}.json`
-    const originalPath = `${getUploadDir()}/${body.fileId}.ged`
-    
-    // Try to delete both paths, but don't fail if one doesn't exist
-    try {
-      await deleteFile(parsedPath)
-    } catch (e) {
-      console.warn(`Failed to delete parsed file: ${parsedPath}`, e)
-    }
-    try {
-      await deleteFile(originalPath)
-    } catch (e) {
-      console.warn(`Failed to delete original file: ${originalPath}`, e)
-    }
-    
+
     return {
       success: true,
       message: 'GEDCOM data deleted successfully',
       data: {
-        fileId: body.fileId
+        fileId: 'current',
+        databaseId: db.id,
       },
       timestamp: new Date().toISOString(),
     }

@@ -6,7 +6,6 @@ import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { put, get } from '@vercel/blob'
 
-export const MEDIA_DIR = 'uploads/gedcom/media'
 const MAX_BYTES = 20 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 20_000
@@ -101,34 +100,36 @@ const mediaType = (rawContentType: string, filename: string) => {
   return type ? { ...type, contentType } : { contentType }
 }
 
-const storeMedia = async (body: Buffer, type: { ext: string; kind: MediaKind; contentType: string }, token: string): Promise<CopiedMedia> => {
+// `prefix`: the Blob folder of the database (databasePaths() in server/utils/access.ts); the tree stores media/<name>
+const storeMedia = async (body: Buffer, type: { ext: string; kind: MediaKind; contentType: string }, prefix: string, token: string): Promise<CopiedMedia> => {
   const file = `media/${randomUUID()}.${type.ext}`
-  await put(`uploads/gedcom/${file}`, body, { access: 'private', token, contentType: type.contentType, addRandomSuffix: false })
+  await put(`${prefix}/${file}`, body, { access: 'private', token, contentType: type.contentType, addRandomSuffix: false })
   return { file, format: type.ext, kind: type.kind, contentType: type.contentType, size: body.length }
 }
 
-export async function copyRemoteMedia(rawUrl: string, token: string): Promise<CopiedMedia> {
+export async function copyRemoteMedia(rawUrl: string, prefix: string, token: string): Promise<CopiedMedia> {
   const response = await download(rawUrl)
   const type = mediaType(response.headers.get('content-type') || '', new URL(response.url || rawUrl).pathname)
   if (!('ext' in type)) throw createError({ statusCode: 415, statusMessage: `The link does not lead to an image or a document (${type.contentType || 'unknown type'})` })
-  return storeMedia(await readLimited(response), type, token)
+  return storeMedia(await readLimited(response), type, prefix, token)
 }
 
 // A file pasted from the clipboard. Vercel functions accept at most 4.5 MB per request; the client keeps under it
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
-export async function storeUploadedMedia(body: Buffer, rawContentType: string, filename: string, token: string): Promise<CopiedMedia> {
+export async function storeUploadedMedia(body: Buffer, rawContentType: string, filename: string, prefix: string, token: string): Promise<CopiedMedia> {
   if (!body.length) throw createError({ statusCode: 400, statusMessage: 'The file is empty' })
   if (body.length > MAX_UPLOAD_BYTES) throw createError({ statusCode: 413, statusMessage: 'The file is larger than 4 MB' })
   const type = mediaType(rawContentType, filename)
   if (!('ext' in type)) throw createError({ statusCode: 415, statusMessage: `The file is not an image or a document (${type.contentType || 'unknown type'})` })
-  return storeMedia(body, type, token)
+  return storeMedia(body, type, prefix, token)
 }
 
 // Only names made by storeMedia, so the request cannot read other blobs
 export const isMediaName = (name: string): boolean => /^[0-9a-f-]{36}\.[a-z]{3,4}$/.test(name)
 
-export async function readMedia(name: string, token: string) {
-  const blob = await get(`${MEDIA_DIR}/${name}`, { access: 'private', token })
+// `dir`: the media folder of a database, or the shared one of the map layer sheets (uploads/gedcom/media)
+export async function readMedia(dir: string, name: string, token: string) {
+  const blob = await get(`${dir}/${name}`, { access: 'private', token })
   if (!blob?.stream) throw createError({ statusCode: 404, statusMessage: 'File not found' })
   const contentType = BY_EXTENSION[name.split('.').pop()!] || 'application/octet-stream'
   // Images, PDF and text open in the browser; office documents are downloaded

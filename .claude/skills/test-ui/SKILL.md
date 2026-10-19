@@ -19,7 +19,7 @@ Chrome je v `C:\Program Files\Google\Chrome\Application\chrome.exe`. Puppeteer p
 - **Viewporty:** desktop 1440×900, telefon 390×844 a tablet 820×1180, oba s `isMobile: true, hasTouch: true`. Layout mapy a menu (☰ pod 768 px) vždy ověř na telefonu.
 - **Scrollování:** `html` má `scroll-behavior: smooth`, používej `el.scrollIntoView({ behavior: 'instant' })`.
 - **Hydratace:** po `goto` počkej, až zmizí text načítání, a sleduj chyby v konzoli (`page.on('console')`, `pageerror`), hlavně hydration mismatch.
-- **Anonymní režim** je pro nepřihlášené vždy zapnutý: jména jako iniciály, data jen jako rok, místa skrytá. Plné údaje uvidíš jen s admin tokenem (`localStorage` podle `composables/useAdminAuth.ts`).
+- **Anonymní režim** je pro nepřihlášené vždy zapnutý: jména jako iniciály, data jen jako rok, místa skrytá. Plné údaje uvidíš jen přihlášený s oprávněním `read` (relace v `localStorage` podle `composables/useAdminAuth.ts`). Bez Blobu podstrč i `POST /api/auth/login` a `GET /api/auth/me` (tvar `SessionInfo` v `types/accounts.ts`) a `GET /api/gedcom/get` podle hlavičky `X-Database`.
 
 ## Co kontrolovat
 

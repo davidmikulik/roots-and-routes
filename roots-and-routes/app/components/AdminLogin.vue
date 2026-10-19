@@ -1,12 +1,15 @@
 <script setup lang="ts">
+// Login with a user name and password (composables/useAdminAuth.ts); once logged in, who is logged in and logout
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
+import type { MessageKey } from '~~/i18n'
 
 const emit = defineEmits<{ (event: 'done'): void }>()
 
 const adminAuth = useAdminAuth()
 const { t } = useT()
-const tokenInput = ref('')
+const username = ref('')
+const password = ref('')
 const isChecking = ref(false)
 const errorMessage = ref('')
 
@@ -14,12 +17,14 @@ const submit = async () => {
   isChecking.value = true
   errorMessage.value = ''
   try {
-    await adminAuth.login(tokenInput.value)
-    tokenInput.value = ''
+    await adminAuth.login(username.value, password.value)
+    password.value = ''
     emit('done')
   } catch (error: any) {
     const status = error?.statusCode || error?.response?.status
-    errorMessage.value = status === 401 ? t('admin.invalidToken')
+    const reason = String(error?.data?.statusMessage || error?.statusMessage || '')
+    errorMessage.value = status === 401 && reason.startsWith('First login') ? t('auth.firstLogin')
+      : status === 401 ? t('auth.invalidCredentials')
       : status === 503 ? t('admin.unavailable')
       : error?.message || t('admin.loginFailed')
   } finally {
@@ -35,25 +40,40 @@ const logout = () => {
 
 <template>
   <div class="text-sm">
-    <div v-if="adminAuth.isAdmin.value" class="flex items-center gap-3">
-      <span class="font-medium text-green-700 dark:text-green-400">{{ t('admin.mode') }}</span>
+    <div v-if="adminAuth.isLoggedIn.value" class="flex flex-wrap items-center gap-3">
+      <span class="font-medium text-green-700 dark:text-green-400">
+        {{ t('auth.loggedInAs', { name: adminAuth.user.value?.username || '' }) }}
+        ({{ t(`auth.level.${adminAuth.user.value?.role}` as MessageKey) }})
+      </span>
       <button type="button" class="px-3 py-1 rounded border" @click="logout">{{ t('admin.logout') }}</button>
     </div>
-    <form v-else class="flex flex-col gap-2" @submit.prevent="submit">
-      <label for="admin-token" class="font-medium">{{ t('admin.token') }}</label>
-      <div class="flex gap-2">
+    <form v-else class="flex flex-col gap-2" data-login-form @submit.prevent="submit">
+      <p class="font-medium">{{ t('admin.login') }}</p>
+      <label class="flex flex-col gap-1">
+        <span>{{ t('auth.username') }}</span>
         <input
-          id="admin-token"
-          v-model="tokenInput"
-          type="password"
-          autocomplete="current-password"
-          class="flex-1 min-w-0 px-3 py-1 rounded border bg-transparent"
+          v-model="username"
+          type="text"
+          name="username"
+          autocomplete="username"
+          autocapitalize="none"
+          class="px-3 py-1 rounded border bg-transparent"
         >
-        <button type="submit" :disabled="isChecking" class="px-3 py-1 rounded bg-primary-600 text-white disabled:opacity-50">
-          {{ isChecking ? t('admin.checking') : t('admin.submit') }}
-        </button>
-      </div>
-      <p v-if="errorMessage" class="text-red-600 dark:text-red-400">{{ errorMessage }}</p>
+      </label>
+      <label class="flex flex-col gap-1">
+        <span>{{ t('auth.password') }}</span>
+        <input
+          v-model="password"
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          class="px-3 py-1 rounded border bg-transparent"
+        >
+      </label>
+      <button type="submit" :disabled="isChecking" class="self-start px-4 py-1.5 rounded bg-primary-600 text-white disabled:opacity-50">
+        {{ isChecking ? t('admin.checking') : t('admin.submit') }}
+      </button>
+      <p v-if="errorMessage" role="alert" class="text-red-600 dark:text-red-400">{{ errorMessage }}</p>
     </form>
   </div>
 </template>

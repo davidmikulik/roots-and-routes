@@ -1,7 +1,7 @@
 // The actions on one person, defined once for the buttons (app/components/PersonActions.vue) and the right-click menu
 // (app/components/PersonActionsMenu.vue): show the detail, edit, add a father / mother / partner / child / sibling.
-// The detail is for everyone (the page decides what it shows); the editing actions only for the administrator on the
-// real data, through the shared person editor (composables/usePersonEditor.ts).
+// The detail is for everyone (the page decides what it shows); the editing actions only with the permission to edit
+// the database, on the real data, through the shared person editor (composables/usePersonEditor.ts).
 import { RELATIONS, type PersonEditor } from '~~/composables/usePersonEditor'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
@@ -33,7 +33,7 @@ export const usePersonActions = (options: {
     const actions: PersonAction[] = []
     if (options.onDetail) actions.push({ key: 'detail', label: t('tree.action.detail'), icon: 'ℹ', disabled: false, run: () => options.onDetail!(id) })
     const editor = options.editor
-    if (!editor || !adminAuth.isAdmin.value || !editor.canEdit.value) return actions
+    if (!editor || !adminAuth.canEdit.value || !editor.canEdit.value) return actions
     actions.push({ key: 'edit', label: t('tree.edit'), icon: '✎', disabled: false, run: () => editor.openEdit(id) })
     const available = editor.availability(id)
     RELATIONS.forEach((relation, index) => actions.push({

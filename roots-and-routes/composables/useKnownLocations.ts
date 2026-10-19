@@ -1,5 +1,5 @@
 // The catalog of known locations (Admin → Known locations) on the client, for showing the archive maps of a place.
-// Only for the administrator: GET /api/admin/locations needs the admin token. Loaded once and shared through useState;
+// Shared by all databases; for logged-in users with full data (GET /api/admin/locations, permission "read"). Loaded once and shared through useState;
 // the Known locations page puts its list here after loading, saving or syncing.
 import type { KnownLocation } from '~~/types/locations'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
@@ -11,7 +11,7 @@ export const useKnownLocations = () => {
   const locations = useState<KnownLocation[] | null>('known-locations', () => null)
 
   const load = async (force = false): Promise<void> => {
-    if (!import.meta.client || !adminAuth.isAdmin.value || (locations.value && !force)) return
+    if (!import.meta.client || !adminAuth.canRead.value || (locations.value && !force)) return
     try {
       locations.value = (await $fetch<{ locations: KnownLocation[] }>('/api/admin/locations', { headers: adminAuth.authHeaders() })).locations
     } catch (error) {
@@ -19,9 +19,9 @@ export const useKnownLocations = () => {
     }
   }
 
-  // Pages call this in setup: loads as soon as the admin token is known (it is restored after the page mounted)
-  const autoLoad = () => watch(() => adminAuth.isAdmin.value, (isAdmin) => {
-    if (isAdmin) void load()
+  // Pages call this in setup: loads as soon as the session is known (it is restored after the page mounted)
+  const autoLoad = () => watch(() => adminAuth.canRead.value, (canRead) => {
+    if (canRead) void load()
     else locations.value = null
   }, { immediate: true })
 

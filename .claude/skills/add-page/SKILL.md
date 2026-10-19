@@ -30,7 +30,7 @@ Vše v `roots-and-routes/`. Vzor: `app/pages/graph.vue` (data ze storu, nastaven
 5. **Navigace:** položka do pole `navLinks` v `app/app.vue` (desktopové i mobilní menu ji převezmou) a klíče `nav.<nazev>` a `title.<nazev>` do `i18n/common.ts`.
 6. **Prerender:** veřejnou stránku přidej do `nitro.prerender.routes` v `nuxt.config.ts`.
 7. **Osobní údaje:** každé jméno, datum a místo zobraz přes `anon.name(...)`, `anon.date(...)`, `anon.place(...)`. Datum formátuj z textu GEDCOM (`utils/gedcom/dates.ts`), ne z `Date`. Jména (`names[].full`) jsou bez lomítek, nikdy je nepřidávej.
-8. **Editace** skryj přes `adminAuth.isAdmin.value` a mutace dělej ve storu (skill `edit-store-data`).
+8. **Editace** skryj podle oprávnění (`adminAuth.canEdit.value`, `canRead`, `canManage`, `isSystemAdmin`, viz `composables/useAdminAuth.ts`) a mutace dělej ve storu (skill `edit-store-data`).
 9. **Rozložení** ověř i na telefonu (skill `test-ui`).
 
 Nakonec spusť skill `verify-change`.

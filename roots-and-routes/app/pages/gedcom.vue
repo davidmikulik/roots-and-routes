@@ -62,8 +62,14 @@ const handleFileDrop = (event: DragEvent) => {
   }
 }
 
+// Replacing the tree needs the permission to administer the database; with the permission to edit, a file can only
+// be merged into the tree (into an empty database it becomes the tree)
+watch(() => adminAuth.canManage.value, (canManage) => {
+  importMode.value = canManage ? 'replace' : 'merge'
+}, { immediate: true })
+
 const handleFile = async (file: File) => {
-  if (!adminAuth.isAdmin.value) {
+  if (!adminAuth.canEdit.value) {
     uploadError.value = t('gedcom.error.notAdmin')
     return
   }
@@ -113,7 +119,7 @@ const handleFile = async (file: File) => {
         const formData = new FormData()
         formData.append('file', file)
         // Merging only analyses the file on the server; the merged tree is saved after the review
-        const merging = importMode.value === 'merge' && gedcomStore.hasData.value
+        const merging = !adminAuth.canManage.value || (importMode.value === 'merge' && gedcomStore.hasData.value)
         formData.append('mode', merging ? 'merge' : 'replace')
         formData.append('backupOnImport', String(appSettings.settings.value.data.backupOnImport))
         formData.append('backupCount', String(appSettings.settings.value.data.backupCount))
@@ -250,7 +256,7 @@ const viewTree = () => router.push('/tree')
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div
-        v-if="!adminAuth.isAdmin.value"
+        v-if="!adminAuth.canEdit.value"
         class="p-8 rounded-2xl border-2"
         :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-gray-50 border-gray-300 text-gray-900': !isDark }"
       >
@@ -296,15 +302,15 @@ const viewTree = () => router.push('/tree')
       </div>
       
       <div class="space-y-4">
-        <div v-if="adminAuth.isAdmin.value" class="flex items-center justify-between gap-4 p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+        <div v-if="adminAuth.canEdit.value" class="flex items-center justify-between gap-4 p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <label for="import-mode" class="font-medium">{{ t('gedcom.mode.label') }}</label>
           <select id="import-mode" v-model="importMode" class="px-3 py-2 rounded border bg-transparent">
-            <option value="replace">{{ t('gedcom.mode.replace') }}</option>
-            <option value="merge" :disabled="!gedcomStore.hasData.value">{{ t('gedcom.mode.merge') }}</option>
+            <option value="replace" :disabled="!adminAuth.canManage.value">{{ t('gedcom.mode.replace') }}</option>
+            <option value="merge" :disabled="!gedcomStore.hasData.value && adminAuth.canManage.value">{{ t('gedcom.mode.merge') }}</option>
           </select>
         </div>
 
-        <section v-if="pendingGedcom && adminAuth.isAdmin.value" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
+        <section v-if="pendingGedcom && adminAuth.canEdit.value" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <h2 class="font-bold text-lg mb-1">{{ t('gedcom.merge.title') }}</h2>
           <p class="text-sm opacity-75 mb-4">
             {{ t('gedcom.merge.summary', { people: pendingGedcom.individuals.size, duplicates: pendingDuplicates.length }) }}
@@ -410,14 +416,14 @@ const viewTree = () => router.push('/tree')
               {{ t('gedcom.result.viewTree') }}
             </button>
             <button
-              v-if="adminAuth.isAdmin.value"
+              v-if="adminAuth.canRead.value"
               @click="exportGedcom"
               class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
             >
               {{ t('gedcom.result.export') }}
             </button>
             <button
-              v-if="adminAuth.isAdmin.value"
+              v-if="adminAuth.canManage.value"
               @click="clearData"
               class="px-4 py-2 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg text-sm font-medium"
             >

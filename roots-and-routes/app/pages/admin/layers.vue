@@ -179,14 +179,14 @@ const dialogLayerTitle = computed(() => layers.value.find(l => l.id === dialog.v
       </div>
     </header>
 
-    <section v-if="!adminAuth.isAdmin.value" class="mb-6 rounded-lg border p-5" :class="cardClass">
+    <section v-if="!adminAuth.isSystemAdmin.value" class="mb-6 rounded-lg border p-5" :class="cardClass">
       <AdminLogin />
     </section>
 
     <p v-if="errorMessage && !dialog" role="alert" class="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">{{ errorMessage }}</p>
     <p v-if="successMessage" role="status" class="mb-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">{{ successMessage }}</p>
 
-    <template v-if="adminAuth.isAdmin.value">
+    <template v-if="adminAuth.isSystemAdmin.value">
       <p v-if="!mapLayers.layers.value" class="opacity-70">{{ t('locations.loading') }}</p>
       <template v-else>
         <section class="mb-6 rounded-lg border p-5" :class="cardClass">

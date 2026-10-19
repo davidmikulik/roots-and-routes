@@ -15,8 +15,8 @@ const { t } = useT()
 const adminPanelOpen = ref(false)
 const menuOpen = ref(false)
 
-// GEDCOM (import, merge, export) is for the administrator only; the other administration is in the lock panel
-// (AdminMenu.vue) once logged in
+// GEDCOM (import, merge, export) only with the permission to edit the chosen database; the other administration is
+// in the lock panel (AdminMenu.vue) once logged in
 const allNavLinks: { to: string; key: MessageKey; admin?: boolean }[] = [
   { to: '/', key: 'nav.home' },
   { to: '/map', key: 'nav.map' },
@@ -24,7 +24,7 @@ const allNavLinks: { to: string; key: MessageKey; admin?: boolean }[] = [
   { to: '/graph', key: 'nav.graph' },
   { to: '/gedcom', key: 'nav.gedcom', admin: true },
 ]
-const navLinks = computed(() => allNavLinks.filter(link => !link.admin || adminAuth.isAdmin.value))
+const navLinks = computed(() => allNavLinks.filter(link => !link.admin || adminAuth.canEdit.value))
 
 const toggleMenu = () => {
   menuOpen.value = !menuOpen.value
@@ -39,7 +39,7 @@ watch(() => route.path, () => { menuOpen.value = false })
 // The store keeps unsaved edits here when auto-save is off (see useGedcomStore)
 const gedcomState = useState<{ dirty?: boolean } | null>('gedcom-store')
 
-// Restore saved token and settings after hydration (pages are prerendered without them)
+// Restore the saved session and settings after hydration (pages are prerendered without them)
 onMounted(() => {
   adminAuth.restore()
   appSettings.restore()
@@ -61,6 +61,8 @@ const pageTitle = computed(() => {
     case '/settings': return t('title.settings')
     case '/admin/locations': return t('title.locations')
     case '/admin/layers': return t('title.layers')
+    case '/admin/users': return t('title.users')
+    case '/account': return t('title.account')
     case '/release-notes': return t('title.releases')
     default: return t('app.name')
   }
@@ -113,19 +115,20 @@ useHead({
                 'bg-gray-700 hover:bg-gray-600': isDark,
                 'bg-gray-200 hover:bg-gray-300': !isDark,
               }"
-              :aria-label="adminAuth.isAdmin.value ? t('admin.mode') : t('admin.login')"
-              :title="adminAuth.isAdmin.value ? t('admin.mode') : t('admin.login')"
+              :aria-label="adminAuth.isLoggedIn.value ? t('admin.mode') : t('admin.login')"
+              :title="adminAuth.isLoggedIn.value ? t('admin.mode') : t('admin.login')"
+              data-account-button
             >
-              <span class="text-xl">{{ adminAuth.isAdmin.value ? '🔓' : '🔒' }}</span>
+              <span class="text-xl">{{ adminAuth.isLoggedIn.value ? '🔓' : '🔒' }}</span>
             </button>
             <div
               v-if="adminPanelOpen"
               class="absolute right-0 top-12 z-50 w-80 p-4 rounded-lg border shadow-lg"
               :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-white border-gray-200 text-gray-900': !isDark }"
             >
-              <AdminMenu v-if="adminAuth.isAdmin.value" @navigate="adminPanelOpen = false" />
-              <!-- After logging in the panel stays open with the administrator's menu -->
-              <AdminLogin v-else @done="adminPanelOpen = adminAuth.isAdmin.value" />
+              <AdminMenu v-if="adminAuth.isLoggedIn.value" @navigate="adminPanelOpen = false" />
+              <!-- After logging in the panel stays open with the user's menu -->
+              <AdminLogin v-else @done="adminPanelOpen = adminAuth.isLoggedIn.value" />
             </div>
             <button
               @click="toggleDark"

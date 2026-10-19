@@ -1,7 +1,8 @@
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { requireDatabase } from '~~/server/utils/access'
 import { listBackups } from '~~/server/utils/backups'
 
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
-  return { backups: await listBackups() }
+  // Backups of the database of the request; whoever edits it may back it up (before a merge)
+  const { db } = await requireDatabase(event, 'edit')
+  return { backups: await listBackups(db) }
 })

@@ -84,7 +84,8 @@ const importSettings = async (event: Event) => {
   }
 }
 
-// Backups live on the server and are only visible to the administrator
+// Backups of the chosen database live on the server: those who edit it see and make them, restoring needs the
+// permission to administer it
 const backups = ref<BackupInfo[]>([])
 const backupsLoading = ref(false)
 
@@ -93,7 +94,7 @@ const formatDate = (iso: string): string =>
 const formatSize = (bytes: number): string => `${Math.max(1, Math.round(bytes / 1024))} kB`
 
 const loadBackups = async () => {
-  if (!adminAuth.isAdmin.value) {
+  if (!adminAuth.canEdit.value) {
     backups.value = []
     return
   }
@@ -157,8 +158,8 @@ const takeMarriedNames = async () => {
   }
 }
 
-watch([() => adminAuth.isAdmin.value, activeSection], ([isAdmin, section]) => {
-  if (isAdmin && section === 'data') loadBackups()
+watch([() => adminAuth.canEdit.value, () => adminAuth.databaseId.value, activeSection], ([canEdit, , section]) => {
+  if (canEdit && section === 'data') loadBackups()
 }, { immediate: true })
 
 // What's new in the current version (utils/releaseNotes.ts), with a link to all release notes
@@ -245,14 +246,14 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
           </h2>
 
           <NuxtLink
-            v-if="adminAuth.isAdmin.value"
+            v-if="adminAuth.canEditPlaces.value"
             to="/admin/locations"
             class="mb-6 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
           >
             {{ t('settings.general.locations') }}
           </NuxtLink>
           <NuxtLink
-            v-if="adminAuth.isAdmin.value"
+            v-if="adminAuth.isSystemAdmin.value"
             to="/admin/layers"
             class="mb-6 ml-3 inline-flex items-center rounded border border-gray-300 px-4 py-2 text-sm font-medium hover:border-primary-500 dark:border-gray-600"
           >
@@ -360,7 +361,7 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
             <h3 class="text-lg font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               {{ t('settings.data.backups') }}
             </h3>
-            <div v-if="!adminAuth.isAdmin.value" class="space-y-3">
+            <div v-if="!adminAuth.canEdit.value" class="space-y-3">
               <p class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.data.backupsAdminOnly') }}</p>
               <AdminLogin />
             </div>
@@ -382,14 +383,14 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                   <td class="py-2">{{ formatSize(backup.size) }}</td>
                   <td class="py-2">{{ backup.attachments ?? 0 }}</td>
                   <td class="py-2 text-right">
-                    <button class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
+                    <button v-if="adminAuth.canManage.value" class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div v-if="adminAuth.isAdmin.value" :class="cardClass" data-married-names>
+          <div v-if="adminAuth.canManage.value" :class="cardClass" data-married-names>
             <h3 class="text-lg font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
               {{ t('settings.data.marriedNames.title') }}
             </h3>
@@ -411,10 +412,10 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
             </h2>
             <SettingsToggle
               :model-value="anon.enabled.value"
-              :disabled="!adminAuth.isAdmin.value"
+              :disabled="!adminAuth.canRead.value"
               icon="👤"
               :label="t('settings.privacy.anonymous')"
-              :description="adminAuth.isAdmin.value ? t('settings.privacy.anonymousHint') : t('settings.privacy.anonymousForced')"
+              :description="adminAuth.canRead.value ? t('settings.privacy.anonymousHint') : t('settings.privacy.anonymousForced')"
               @update:model-value="settings.privacy.anonymousMode = $event"
             />
           </div>
@@ -462,6 +463,7 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                   <li>{{ t('settings.about.f2') }}</li>
                   <li>{{ t('settings.about.f3') }}</li>
                   <li>{{ t('settings.about.f4') }}</li>
+                  <li>{{ t('settings.about.f5') }}</li>
                 </ul>
               </div>
             </div>

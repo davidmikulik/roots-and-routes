@@ -345,7 +345,7 @@ onUnmounted(() => {
                 <option v-for="layer in HISTORIC_LAYERS" :key="layer.id" :value="layer.id">{{ t(layer.label as MessageKey) }} ({{ layer.period }})</option>
               </select>
             </label>
-            <NuxtLink v-if="adminAuth.isAdmin.value" to="/admin/layers" class="inline-block text-xs underline" data-manage-layers>{{ t('map.layers.manageCustom') }}</NuxtLink>
+            <NuxtLink v-if="adminAuth.isSystemAdmin.value" to="/admin/layers" class="inline-block text-xs underline" data-manage-layers>{{ t('map.layers.manageCustom') }}</NuxtLink>
             <p v-if="mapSettings.historicLayer === 'cio'" class="text-xs opacity-70">{{ t('map.layers.cioHint') }}</p>
             <label v-if="historicChoice !== 'none'" class="block">
               {{ t('map.layers.opacity') }}: {{ mapSettings.historicOpacity }} %
@@ -384,7 +384,7 @@ onUnmounted(() => {
         </div>
         
         <button
-          v-if="adminAuth.isAdmin.value"
+          v-if="adminAuth.canEdit.value"
           @click="importGedcom"
           class="w-full px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
         >
@@ -410,7 +410,7 @@ onUnmounted(() => {
               {{ t('map.noDataHint') }}
             </p>
             <button
-              v-if="adminAuth.isAdmin.value"
+              v-if="adminAuth.canEdit.value"
               @click="importGedcom"
               class="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
             >

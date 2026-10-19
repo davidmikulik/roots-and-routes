@@ -72,7 +72,7 @@ const choose = (id: string) => { if (id) setRoot(id) }
 // with the Tree page (docs/graficky-strom-editace.md). The middle person stays; a new relative appears around them.
 const adminAuth = useAdminAuth()
 const editor = usePersonEditor(gedcomStore)
-const canEdit = computed(() => adminAuth.isAdmin.value && editor.canEdit.value)
+const canEdit = computed(() => adminAuth.canEdit.value && editor.canEdit.value)
 const saveChanges = async () => {
   try {
     await gedcomStore.saveNow()
@@ -117,7 +117,7 @@ const openMenu = (value: { id: string; x: number; y: number }) => { menu.value =
       <div class="mb-4 text-4xl">🌳</div>
       <h3 class="mb-2 text-xl font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">{{ t('graph.empty.title') }}</h3>
       <p class="mb-6 text-lg opacity-75" :class="{ 'text-gray-300': isDark, 'text-gray-600': !isDark }">{{ t('graph.empty.text') }}</p>
-      <NuxtLink v-if="adminAuth.isAdmin.value" to="/gedcom" class="inline-block rounded-lg bg-primary-600 px-8 py-4 text-lg font-medium text-white transition-colors hover:bg-primary-700">
+      <NuxtLink v-if="adminAuth.canEdit.value" to="/gedcom" class="inline-block rounded-lg bg-primary-600 px-8 py-4 text-lg font-medium text-white transition-colors hover:bg-primary-700">
         {{ t('graph.empty.import') }}
       </NuxtLink>
     </div>
@@ -189,9 +189,9 @@ const openMenu = (value: { id: string; x: number; y: number }) => { menu.value =
             @select-person="detailRelative"
           >
             <template #footer>
-              <!-- Visitors get no places, so the map would be empty for them -->
+              <!-- Visitors and the permission "demo" get no places, so the map would be empty for them -->
               <NuxtLink
-                v-if="adminAuth.isAdmin.value"
+                v-if="adminAuth.canRead.value"
                 :to="{ path: '/map', query: { person: detailId } }"
                 class="mt-4 inline-block text-sm font-medium text-primary-700 underline dark:text-primary-300"
                 data-choose-on-map

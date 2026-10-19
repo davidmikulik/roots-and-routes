@@ -20,6 +20,18 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.8.0',
+    date: '2026-10-19',
+    title: { cs: 'Uživatelé, oprávnění a více rodokmenů', en: 'Users, permissions and several family trees' },
+    items: [
+      { kind: 'new', cs: 'Přihlášení jménem a heslem místo tokenu správce. Při prvním přihlášení zadejte své jméno a jako heslo dosavadní token: stanete se administrátorem a dosavadní rodokmen bude váš.', en: 'Logging in with a user name and password instead of the administrator token. For the first login enter your name and the former token as the password: you become the administrator and the existing family tree becomes yours.' },
+      { kind: 'new', cs: 'Administrátor spravuje uživatele (Uživatelé pod zámkem): zakládá je, mění jim roli a heslo a maže je. Role jsou demo (jen anonymizovaná data), číst, editovat a administrovat.', en: 'The administrator manages users (Users under the lock): creates them, changes their role and password and deletes them. The roles are demo (only anonymized data), read, edit and administer.' },
+      { kind: 'new', cs: 'Datové základny: každý uživatel s právem editovat může mít vlastní rodokmeny a přidělit je dalším uživatelům s oprávněním (Můj účet). Mezi základnami se přepíná v menu pod zámkem.', en: 'Databases: every user who can edit can have their own family trees and share them with other users with a permission (My account). Switch between them in the menu under the lock.' },
+      { kind: 'improved', cs: 'Zálohy a přílohy patří ke své datové základně. Známá místa a mapové vrstvy jsou společné pro všechny.', en: 'Backups and attachments belong to their database. Known places and map layers are shared by all.' },
+      { kind: 'new', cs: 'Každý si může změnit heslo v sekci Můj účet.', en: 'Everyone can change their password under My account.' },
+    ],
+  },
+  {
     version: '1.7.0',
     date: '2026-10-19',
     title: { cs: 'Katastrální mapa při umísťování listů', en: 'Cadastral map when placing sheets' },

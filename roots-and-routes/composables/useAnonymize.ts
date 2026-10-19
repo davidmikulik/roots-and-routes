@@ -5,13 +5,14 @@ import { formatPersonName, nameMatches, nameSortKey, normalizeText, primaryNameO
 import type { GedcomName } from '~~/types/gedcom'
 
 // Anonymous mode: display-only masking of personal information (names → initials, dates → year, places hidden).
-// Always on for visitors who are not logged in as administrator; the administrator can switch it off in the settings.
-// Logged-out is also the state during prerender and before the saved token is restored, so nothing leaks while loading.
+// Always on for visitors and the permission "demo" on the chosen database; from the permission "read" up it can be
+// switched off in the settings. Logged-out is also the state during prerender and before the saved session is
+// restored, so nothing leaks while loading.
 export const useAnonymize = () => {
   const { settings } = useSettings()
   const adminAuth = useAdminAuth()
   const { t } = useT()
-  const enabled = computed(() => !adminAuth.isAdmin.value || settings.value.privacy.anonymousMode)
+  const enabled = computed(() => !adminAuth.canRead.value || settings.value.privacy.anonymousMode)
 
   const name = (value: string): string => {
     if (!enabled.value) return value

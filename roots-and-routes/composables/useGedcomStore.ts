@@ -1,6 +1,7 @@
 import { computed, effectScope, onMounted, watch } from 'vue'
 import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
+import type { DatabaseInfo } from '~~/types/accounts'
 import { parseGedcom, parseGedcomDate, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
 import { applyCatalogToTree, applyKnownLocations, learnKnownLocations, locationStamp, syncPersonLocations } from '~~/utils/gedcom/locations'
 import { birthNameOf, formatPersonName, isMarriedName, joinNameParts, marriedNameOf, nameMatches, namePartsOf, normalizeText } from '~~/utils/gedcom/names'
@@ -18,8 +19,12 @@ interface GedcomState {
   error: string | null
   // Edits that were not sent to the server yet (only when auto-save is off)
   dirty: boolean
-  // The server sent the anonymized copy for visitors (not logged in): it must never be edited, saved or exported
+  // The server sent the anonymized copy (visitors, permission "demo"): it must never be edited, saved or exported
   anonymized: boolean
+  // The database the tree was loaded from (server/utils/access.ts); changes are saved into it, never into another
+  // one chosen meanwhile
+  databaseId: string | null
+  databaseName: string
 }
 
 export interface GedcomDuplicate {
@@ -128,7 +133,8 @@ export const linksOf = (file: GedcomFile, individual: GedcomIndividual): LinkDra
 
 const DATABASE_NAME = 'roots-and-routes'
 const STORE_NAME = 'gedcom'
-const DATA_KEY = 'current'
+// One local copy per database (key = database id)
+const DEFAULT_KEY = 'current'
 
 const openDatabase = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DATABASE_NAME, 1)
@@ -137,21 +143,21 @@ const openDatabase = (): Promise<IDBDatabase> => new Promise((resolve, reject) =
   request.onerror = () => reject(request.error)
 })
 
-const saveContent = async (content: string): Promise<void> => {
+const saveContent = async (key: string, content: string): Promise<void> => {
   const database = await openDatabase()
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite')
-    transaction.objectStore(STORE_NAME).put(content, DATA_KEY)
+    transaction.objectStore(STORE_NAME).put(content, key)
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)
   })
   database.close()
 }
 
-const loadContent = async (): Promise<string | null> => {
+const loadContent = async (key: string): Promise<string | null> => {
   const database = await openDatabase()
   const content = await new Promise<string | null>((resolve, reject) => {
-    const request = database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(DATA_KEY)
+    const request = database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key)
     request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null)
     request.onerror = () => reject(request.error)
   })
@@ -159,37 +165,43 @@ const loadContent = async (): Promise<string | null> => {
   return content
 }
 
-const deleteContent = async (): Promise<void> => {
+// Without a key every local copy (after logging out, nothing of the full data stays in the browser)
+const deleteContent = async (key?: string): Promise<void> => {
   const database = await openDatabase()
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite')
-    transaction.objectStore(STORE_NAME).delete(DATA_KEY)
+    const store = transaction.objectStore(STORE_NAME)
+    if (key) store.delete(key)
+    else store.clear()
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)
   })
   database.close()
 }
 
-const loadFromServer = async (headers: Record<string, string>, fileId?: string): Promise<{ file: GedcomFile; parseResult: GedcomParseResult; fileId: string; anonymized: boolean } | null> => {
+type ServerData = { file: GedcomFile; parseResult: GedcomParseResult; fileId: string; anonymized: boolean; database: DatabaseInfo | null }
+
+// null: the request failed; file null: the database has no tree yet
+const loadFromServer = async (headers: Record<string, string>): Promise<ServerData | { file: null; database: DatabaseInfo | null } | null> => {
   if (!import.meta.client) return null
   try {
-    const url = fileId ? `/api/gedcom/get?fileId=${fileId}` : '/api/gedcom/get'
-    console.log(`[GEDCOM] Fetching from server: ${url}`)
+    console.log('[GEDCOM] Fetching from server: /api/gedcom/get')
     const response = await $fetch<{
       success: boolean
       data: {
-        file: SerializedGedcomFile
-        fileInfo: { id: string; name: string; createdAt?: Date }
+        file?: SerializedGedcomFile
+        fileInfo?: { id: string; name: string; createdAt?: Date }
+        database?: DatabaseInfo
         anonymized?: boolean
-      }
-    }>(url, { headers })
-    
+      } | null
+    }>('/api/gedcom/get', { headers })
+
     console.log('[GEDCOM] Server response:', { success: response.success, hasFile: !!response.data?.file })
-    
-    if (!response.success || !response.data?.file) {
-      return null
+
+    if (!response.success || !response.data?.file || !response.data.fileInfo) {
+      return { file: null, database: response.data?.database || null }
     }
-    
+
     // Server sends Maps as entry arrays, restore them
     const file = deserializeGedcomFile(response.data.file)
     const parseResult: GedcomParseResult = {
@@ -202,8 +214,8 @@ const loadFromServer = async (headers: Record<string, string>, fileId?: string):
         parsingTime: 0
       }
     }
-    
-    return { file, parseResult, fileId: response.data.fileInfo.id, anonymized: !!response.data.anonymized }
+
+    return { file, parseResult, fileId: response.data.fileInfo.id, anonymized: !!response.data.anonymized, database: response.data.database || null }
   } catch (error) {
     console.error('[GEDCOM] Failed to load GEDCOM from server:', error)
     return null
@@ -219,6 +231,8 @@ const createEmptyState = (): GedcomState => ({
   error: null,
   dirty: false,
   anonymized: false,
+  databaseId: null,
+  databaseName: '',
 })
 
 // Duplicates are matched by the birth name (the married name may be missing in the other file)
@@ -270,6 +284,8 @@ export interface LocationSyncResult { added: number; updated: number; filled: nu
 
 // Shared by every useGedcomStore() call
 let latestRequest = 0
+// adminAuth.dataKey of the last load: the watcher below reloads only when the user or the database changed since
+let requestedKey: string | null = null
 let authWatcher: ReturnType<typeof effectScope> | null = null
 
 export const useGedcomStore = () => {
@@ -280,20 +296,26 @@ export const useGedcomStore = () => {
   const appSettings = useSettings()
   const { t } = useT()
 
-  // Every change, save and export: only the administrator, and never on the anonymized copy for visitors
+  // Every change and save: only with the permission to edit the database, and never on the anonymized copy
   // (saving it would overwrite the real tree with initials and years)
   const requireEditable = () => {
-    adminAuth.requireAdmin()
+    adminAuth.requireEdit()
     if (state.value.anonymized) throw new Error(t('admin.dataAnonymized'))
   }
+  // Export: the full data (permission "read" and up)
+  const requireFullData = () => {
+    adminAuth.requireRead()
+    if (state.value.anonymized) throw new Error(t('admin.dataAnonymized'))
+  }
+  const localKey = () => state.value.databaseId || DEFAULT_KEY
 
-  // Persist the current file to the server; needs the admin token and throws on failure
+  // Persist the current file to the server (the database it was loaded from); throws on failure
   const saveToServer = async (file: GedcomFile): Promise<void> => {
     requireEditable()
     if (!state.value.fileId) return
     await $fetch('/api/gedcom/save', {
       method: 'POST',
-      headers: adminAuth.authHeaders(),
+      headers: adminAuth.authHeaders(state.value.databaseId),
       body: { fileId: state.value.fileId, fileData: serializeGedcomFile(file) },
     })
     state.value.dirty = false
@@ -311,22 +333,35 @@ export const useGedcomStore = () => {
     if (state.value.file) await saveToServer(state.value.file)
   }
 
-  // Loads the tree from the server: full data with the admin token, the anonymized copy without it.
-  // Only the newest request may write the state (a slow anonymous answer must not replace a newer full one).
+  // Loads the tree of the chosen database from the server: full data from the permission "read" up, otherwise
+  // the anonymized copy. Only the newest request may write the state (a slow anonymous answer must not replace a
+  // newer full one).
   const refreshFromServer = async (): Promise<boolean> => {
-    // The saved token is normally restored in app.vue's onMounted, which runs after the pages' onMounted
+    // The saved session is normally restored in app.vue's onMounted, which runs after the pages' onMounted
     adminAuth.restore()
+    requestedKey = adminAuth.dataKey.value
     const request = ++latestRequest
     try {
       console.log('[GEDCOM] Loading from server...')
       const serverData = await loadFromServer(adminAuth.authHeaders())
-      if (request !== latestRequest) return !!serverData
-      if (serverData) {
+      if (request !== latestRequest) return !!serverData?.file
+      if (serverData?.file) {
         console.log(`[GEDCOM] Loaded ${serverData.file.metadata.totalIndividuals} individuals from server${serverData.anonymized ? ' (anonymized)' : ''}`)
-        state.value = { ...createEmptyState(), file: serverData.file, parseResult: serverData.parseResult, fileId: serverData.fileId, anonymized: serverData.anonymized }
+        state.value = {
+          ...createEmptyState(),
+          file: serverData.file,
+          parseResult: serverData.parseResult,
+          fileId: serverData.fileId,
+          anonymized: serverData.anonymized,
+          databaseId: serverData.database?.id || null,
+          databaseName: serverData.database?.name || '',
+        }
         return true
-      } else {
+      } else if (serverData) {
+        // A database without a tree (a new one): nothing from the previous database may stay on the screen.
+        // fileId 'current' lets the first merge or edit be saved into it.
         console.log('[GEDCOM] No data found on server')
+        state.value = { ...createEmptyState(), fileId: serverData.database ? 'current' : null, databaseId: serverData.database?.id || null, databaseName: serverData.database?.name || '' }
       }
     } catch (error) {
       console.error('[GEDCOM] Failed to load from server:', error)
@@ -344,18 +379,19 @@ export const useGedcomStore = () => {
       // This ensures all devices see the same (latest) data
       const loadedFromServer = await refreshFromServer()
       console.log('[GEDCOM] Loaded from server:', loadedFromServer)
-      
-      // Fallback to local IndexedDB if server has no data
-      if (!loadedFromServer) {
+
+      // Fallback to the local copy (IndexedDB) of the database if the server has no data; only for those who see the
+      // full data, the local copy is not anonymized
+      if (!loadedFromServer && adminAuth.canRead.value) {
         console.log('[GEDCOM] Trying local IndexedDB...')
         try {
-          const content = await loadContent()
+          const content = await loadContent(localKey())
           if (!content) {
             console.log('[GEDCOM] No local data found')
             return
           }
           const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
-          state.value = { ...createEmptyState(), file: result.file, parseResult: result }
+          state.value = { ...state.value, file: result.file, parseResult: result }
           console.log(`[GEDCOM] Loaded ${result.file.metadata.totalIndividuals} individuals from IndexedDB`)
         } catch (fallbackError) {
           console.error('[GEDCOM] Failed to restore from local storage:', fallbackError)
@@ -364,14 +400,20 @@ export const useGedcomStore = () => {
     })
   }
 
-  // Logging in must bring the full data and logging out must drop it. One watcher for the whole app, outside any
-  // component scope (it would stop when the page that created it unmounts). Unsaved edits are kept.
+  // Logging in, out, another database or another permission must bring the right data (logging out drops the full
+  // data and the local copies). One watcher for the whole app, outside any component scope (it would stop when the
+  // page that created it unmounts). Unsaved edits are kept: the database cannot be switched while there are any.
   if (import.meta.client && !authWatcher) {
     authWatcher = effectScope(true)
-    authWatcher.run(() => watch(adminAuth.isAdmin, (isAdmin) => {
-      if (state.value.dirty || !state.value.file) return
-      if (isAdmin === state.value.anonymized) void refreshFromServer()
-    }))
+    authWatcher.run(() => {
+      watch(adminAuth.isLoggedIn, (loggedIn) => {
+        if (!loggedIn) void deleteContent().catch(error => console.error('Failed to clear local copies:', error))
+      })
+      watch(adminAuth.dataKey, (key) => {
+        if (state.value.dirty || key === requestedKey) return
+        void refreshFromServer()
+      })
+    })
   }
 
   // Computed properties
@@ -393,6 +435,8 @@ export const useGedcomStore = () => {
       error: null,
       dirty: state.value.dirty,
       anonymized: state.value.anonymized,
+      databaseId: state.value.databaseId,
+      databaseName: state.value.databaseName,
     }
   }
 
@@ -416,7 +460,7 @@ export const useGedcomStore = () => {
         stats: previousResult?.stats || { linesProcessed: 0, recordsCreated: file.individuals.size + file.families.size, parsingTime: 0 },
       })
       if (import.meta.client) {
-        await saveContent(writeGedcom(file))
+        await saveContent(localKey(), writeGedcom(file))
         await persist(file)
       }
     }
@@ -436,7 +480,7 @@ export const useGedcomStore = () => {
       stats: previousResult?.stats || { linesProcessed: 0, recordsCreated: file.individuals.size + file.families.size, parsingTime: 0 },
     }, state.value.fileId || undefined, state.value.userId || undefined)
     if (import.meta.client) {
-      await saveContent(writeGedcom(file))
+      await saveContent(localKey(), writeGedcom(file))
       await persist(file)
     }
     return matched.length
@@ -453,9 +497,11 @@ export const useGedcomStore = () => {
       // The import endpoint already stored this file on the server
       state.value.dirty = false
       state.value.anonymized = false
+      // The import endpoint stored it into the chosen database
+      state.value.databaseId = adminAuth.databaseId.value || state.value.databaseId
       if (import.meta.client) {
         try {
-          await saveContent(writeGedcom(result.file))
+          await saveContent(localKey(), writeGedcom(result.file))
         } catch (error) {
           console.error('GEDCOM imported but could not be saved locally:', error)
           state.value.error = 'Import succeeded, but local browser storage could not save a backup.'
@@ -499,7 +545,7 @@ export const useGedcomStore = () => {
     const { backupOnImport, backupCount } = appSettings.settings.value.data
     // Back up the server's tree before it is replaced by the merged one; a failed backup stops the merge
     if (import.meta.client && backupOnImport) {
-      await $fetch('/api/admin/backups', { method: 'POST', headers: adminAuth.authHeaders(), body: { keep: backupCount } })
+      await $fetch('/api/admin/backups', { method: 'POST', headers: adminAuth.authHeaders(state.value.databaseId), body: { keep: backupCount } })
     }
     const current = state.value.file
     if (!current) {
@@ -510,7 +556,10 @@ export const useGedcomStore = () => {
         stats: { linesProcessed: 0, recordsCreated: incoming.individuals.size + incoming.families.size, parsingTime: 0 },
       }
       setFile(incoming, result)
-      if (import.meta.client) await saveContent(writeGedcom(incoming))
+      if (import.meta.client) {
+        await saveContent(localKey(), writeGedcom(incoming))
+        await persist(incoming)
+      }
       return
     }
 
@@ -623,7 +672,7 @@ export const useGedcomStore = () => {
       stats: { ...stats, recordsCreated: merged.individuals.size + merged.families.size },
     })
     if (import.meta.client) {
-      await saveContent(writeGedcom(merged))
+      await saveContent(localKey(), writeGedcom(merged))
       await persist(merged)
     }
   }
@@ -828,7 +877,7 @@ export const useGedcomStore = () => {
     const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
-      await saveContent(writeGedcom(file))
+      await saveContent(localKey(), writeGedcom(file))
       await persist(file)
     }
     return xrefId
@@ -854,22 +903,24 @@ export const useGedcomStore = () => {
     const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }
     setFile(file, { file, warnings: [], errors: [], stats: { ...stats, recordsCreated: file.individuals.size + file.families.size } })
     if (import.meta.client) {
-      await saveContent(writeGedcom(file))
+      await saveContent(localKey(), writeGedcom(file))
       await persist(file)
     }
   }
 
   const clear = async () => {
-    const fileId = state.value.fileId
-    state.value = createEmptyState()
+    const { fileId, databaseId, databaseName } = state.value
+    const key = localKey()
+    state.value = { ...createEmptyState(), fileId: databaseId ? 'current' : null, databaseId, databaseName }
     if (import.meta.client) {
-      void deleteContent().catch(error => console.error('Failed to clear saved GEDCOM data:', error))
-      // Deleting server data is an admin action; without the token only the local copy is cleared
-      if (fileId && adminAuth.isAdmin.value) {
+      void deleteContent(key).catch(error => console.error('Failed to clear saved GEDCOM data:', error))
+      // Deleting the tree on the server needs the permission to administer the database; otherwise only the local
+      // copy is cleared
+      if (fileId && adminAuth.canManage.value) {
         try {
           await $fetch('/api/gedcom/delete', {
             method: 'POST',
-            headers: adminAuth.authHeaders(),
+            headers: adminAuth.authHeaders(databaseId),
             body: { fileId }
           })
         } catch (error) {
@@ -891,7 +942,7 @@ export const useGedcomStore = () => {
   // Helper functions for components
   const getAllAppPersons = (): AppPerson[] => {
     if (!state.value.file) return []
-    
+
     const persons: AppPerson[] = []
     for (const [xrefId, individual] of state.value.file.individuals) {
       const person = convertToAppPerson(individual, state.value.file, 0)
@@ -916,11 +967,11 @@ export const useGedcomStore = () => {
     return tree.people.get(id) || null
   }
 
-  // Downloads the whole tree, including edits not saved to the server yet; admin only, like the import.
+  // Downloads the whole tree, including edits not saved to the server yet; for those who see the full data.
   // Without attachments a plain .ged file; with attachments a ZIP in the GEDZIP layout (GEDCOM 7): gedcom.ged plus
   // media/<name>, which is where FILE media/<name> points. Returns the attachments that could not be downloaded.
   const downloadGedcom = async (): Promise<{ attachments: number; missing: string[] }> => {
-    requireEditable()
+    requireFullData()
     const file = state.value.file
     if (!file || !import.meta.client) return { attachments: 0, missing: [] }
     const date = new Date().toISOString().slice(0, 10)
@@ -933,7 +984,7 @@ export const useGedcomStore = () => {
       const entries: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = { 'gedcom.ged': strToU8(text) }
       for (const path of media) {
         try {
-          const content = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+          const content = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(state.value.databaseId), responseType: 'blob' })
           // Images and PDFs are compressed already
           entries[path] = [new Uint8Array(await content.arrayBuffer()), { level: 0 }]
         } catch (error) {
@@ -957,7 +1008,7 @@ export const useGedcomStore = () => {
   // "Zkopírovat": the server downloads the image or document behind the link and stores a copy in the tree
   const copyLinkToTree = async (url: string): Promise<CopiedMedia> => {
     requireEditable()
-    const response = await $fetch<{ data: CopiedMedia }>('/api/media/copy', { method: 'POST', headers: adminAuth.authHeaders(), body: { url } })
+    const response = await $fetch<{ data: CopiedMedia }>('/api/media/copy', { method: 'POST', headers: adminAuth.authHeaders(state.value.databaseId), body: { url } })
     return response.data
   }
 
@@ -970,7 +1021,7 @@ export const useGedcomStore = () => {
     const fileName = body === file ? name : name.replace(/\.[^.]+$/, '') + '.jpg'
     const response = await $fetch<{ data: CopiedMedia }>(`/api/media/upload?name=${encodeURIComponent(fileName)}`, {
       method: 'POST',
-      headers: { ...adminAuth.authHeaders(), 'content-type': body.type || 'application/octet-stream' },
+      headers: { ...adminAuth.authHeaders(state.value.databaseId), 'content-type': body.type || 'application/octet-stream' },
       body,
     })
     return response.data
@@ -978,18 +1029,18 @@ export const useGedcomStore = () => {
 
   // A stored attachment as a Blob (with its content type), for links in the person detail
   const fetchStoredMedia = async (path: string): Promise<Blob> => {
-    adminAuth.requireAdmin()
-    return await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+    adminAuth.requireRead()
+    return await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(state.value.databaseId), responseType: 'blob' })
   }
 
-  // Copies are private (admin token), so a plain link cannot open them: fetch with the token and open the result.
+  // Copies are private (session token), so a plain link cannot open them: fetch with the token and open the result.
   // The window is opened before the request, otherwise the browser blocks it as a popup.
   const openStoredMedia = async (path: string): Promise<void> => {
-    adminAuth.requireAdmin()
+    adminAuth.requireRead()
     const opensInBrowser = /\.(jpg|png|gif|webp|pdf|txt)$/.test(path)
     const target = opensInBrowser ? window.open('', '_blank') : null
     try {
-      const blob = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(), responseType: 'blob' })
+      const blob = await $fetch<Blob>(`/api/${path}`, { headers: adminAuth.authHeaders(state.value.databaseId), responseType: 'blob' })
       const url = URL.createObjectURL(blob)
       if (target) target.location.href = url
       else {
@@ -1008,7 +1059,7 @@ export const useGedcomStore = () => {
   const searchPeople = (query: string): AppPerson[] => {
     const allPeople = getAllAppPersons()
     if (!query) return allPeople
-    
+
     // Given name, birth surname or surname after marriage, without diacritics (utils/gedcom/names.ts), or the years
     return allPeople.filter(person =>
       nameMatches(person.names, query) ||
@@ -1025,7 +1076,7 @@ export const useGedcomStore = () => {
     totalIndividuals,
     totalFamilies,
     hasData,
-    
+
     // Actions
     setFile,
     parseFile,
@@ -1045,7 +1096,7 @@ export const useGedcomStore = () => {
     uploadMediaToTree,
     openStoredMedia,
     fetchStoredMedia,
-    
+
     // Helpers
     getAllAppPersons,
     getFamilyTree,

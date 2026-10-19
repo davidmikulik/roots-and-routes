@@ -312,7 +312,7 @@ const deletePerson = async (person: AppPerson) => {
         <option v-for="entry in familyNames" :key="entry.name" :value="entry.name">{{ entry.name }} ({{ entry.count }})</option>
       </select>
       
-      <template v-if="adminAuth.isAdmin.value">
+      <template v-if="adminAuth.canEdit.value">
         <button
           v-if="gedcomStore.state.value.dirty"
           @click="saveChanges"
@@ -344,7 +344,7 @@ const deletePerson = async (person: AppPerson) => {
         {{ t('tree.empty.text') }}
       </p>
       <button
-        v-if="adminAuth.isAdmin.value"
+        v-if="adminAuth.canEdit.value"
         @click="importGedcom"
         class="px-8 py-4 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium text-lg"
       >
@@ -397,7 +397,7 @@ const deletePerson = async (person: AppPerson) => {
 
       <!-- List View -->
       <div v-if="viewMode === 'list'" class="overflow-x-auto">
-        <div v-if="adminAuth.isAdmin.value" class="mb-4 flex justify-end">
+        <div v-if="adminAuth.canRead.value" class="mb-4 flex justify-end">
           <button
             @click="exportGedcom"
             :title="t('tree.exportHint')"
@@ -467,7 +467,7 @@ const deletePerson = async (person: AppPerson) => {
                 >
                   {{ t('tree.setAsRoot') }}
                 </button>
-                <template v-if="adminAuth.isAdmin.value">
+                <template v-if="adminAuth.canEdit.value">
                   <button @click.stop="openPersonEditor(person)" class="ml-2 text-xs underline">{{ t('tree.edit') }}</button>
                   <button @click.stop="deletePerson(person)" class="ml-2 text-xs text-red-600 underline">{{ t('tree.delete') }}</button>
                 </template>
@@ -528,7 +528,7 @@ const deletePerson = async (person: AppPerson) => {
         >
           ×
         </button>
-        <div v-if="adminAuth.isAdmin.value" class="absolute top-4 right-14 flex gap-3 text-sm">
+        <div v-if="adminAuth.canEdit.value" class="absolute top-4 right-14 flex gap-3 text-sm">
           <button @click="deletePerson(selectedPerson)" class="text-red-600 underline">{{ t('tree.delete') }}</button>
         </div>
         
@@ -601,7 +601,7 @@ const deletePerson = async (person: AppPerson) => {
       </div>
     </div>
 
-    <PersonEditor v-if="editor.isOpen.value && adminAuth.isAdmin.value" :editor="editor" @saved="onPersonSaved" />
+    <PersonEditor v-if="editor.isOpen.value && adminAuth.canEdit.value" :editor="editor" @saved="onPersonSaved" />
     <PersonActionsMenu
       v-if="menu"
       :key="`${menu.person.id}-${menu.x}-${menu.y}`"

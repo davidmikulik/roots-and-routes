@@ -1,9 +1,9 @@
 // Creates a backup of the current tree right now (used before a merge)
-import { requireAdminToken } from '~~/server/utils/adminAuth'
+import { requireDatabase } from '~~/server/utils/access'
 import { createBackup, clampBackupCount } from '~~/server/utils/backups'
 
 export default defineEventHandler(async (event) => {
-  requireAdminToken(event)
+  const { db } = await requireDatabase(event, 'edit')
   const body = await readBody<{ keep?: unknown }>(event)
-  return { success: true, id: await createBackup(clampBackupCount(body?.keep)) }
+  return { success: true, id: await createBackup(db, clampBackupCount(body?.keep)) }
 })

@@ -63,7 +63,7 @@ const removeArchiveMap = async (location: KnownLocation, index: number) => {
 }
 
 const loadLocations = async () => {
-  if (!adminAuth.isAdmin.value) {
+  if (!adminAuth.canEditPlaces.value) {
     isConnected.value = false
     return
   }
@@ -83,8 +83,8 @@ const loadLocations = async () => {
   }
 }
 
-// Load as soon as the admin token is known (restored after mount or entered above)
-watch(() => adminAuth.isAdmin.value, isAdmin => { if (isAdmin) loadLocations() }, { immediate: true })
+// Load as soon as the session is known (restored after mount or entered above)
+watch(() => adminAuth.canEditPlaces.value, canEdit => { if (canEdit) loadLocations() }, { immediate: true })
 
 // Pasting "lat, lng" into either coordinate field fills both fields
 const pasteCoordinates = (event: ClipboardEvent, target: { latitude: number | null; longitude: number | null }) => {
@@ -311,7 +311,7 @@ const handleImport = async (event: Event) => {
 
     <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
       <AdminLogin />
-      <button v-if="adminAuth.isAdmin.value" type="button" :disabled="isLoading" class="mt-3 rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60" @click="loadLocations">
+      <button v-if="adminAuth.canEditPlaces.value" type="button" :disabled="isLoading" class="mt-3 rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60" @click="loadLocations">
         {{ isLoading ? t('locations.loading') : isConnected ? t('locations.reload') : t('locations.load') }}
       </button>
     </section>
@@ -319,7 +319,7 @@ const handleImport = async (event: Event) => {
     <p v-if="errorMessage" role="alert" class="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">{{ errorMessage }}</p>
     <p v-if="successMessage" role="status" class="mb-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">{{ successMessage }}</p>
 
-    <template v-if="isConnected && adminAuth.isAdmin.value">
+    <template v-if="isConnected && adminAuth.canEditPlaces.value">
       <section class="mb-6 rounded-lg border p-5" :class="{ 'border-gray-700 bg-gray-800': isDark, 'border-gray-200 bg-white': !isDark }">
         <h2 class="mb-4 text-lg font-semibold">{{ t('locations.add.title') }}</h2>
         <form class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px_auto]" @submit.prevent="addLocation">

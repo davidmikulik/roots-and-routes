@@ -9,7 +9,7 @@ Natvrdo psaný text ve stránkách a komponentách je chyba. Vše jde přes `con
 
 ## Kam klíč patří
 
-- `i18n/common.ts`: hlavička, menu (`nav.*`), titulky stránek (`title.*`), přihlášení admina (`admin.*`), patička.
+- `i18n/common.ts`: hlavička, menu (`nav.*`), titulky stránek (`title.*`), menu pod zámkem (`admin.*`), patička. Přihlášení, oprávnění, Můj účet a Uživatelé (`auth.*`, `account.*`, `users.*`) jsou v `i18n/accounts.ts`.
 - `i18n/<stránka>.ts`: texty jedné stránky (`map`, `tree`, `graph`, `gedcom`, `settings`, `locations`, `home`).
 - Nový soubor přidej do `i18n/index.ts` do obou objektů `en` i `cs`.
 

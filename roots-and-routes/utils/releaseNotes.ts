@@ -20,6 +20,14 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.10.0',
+    date: '2026-10-20',
+    title: { cs: 'Věk osob', en: 'Age of people' },
+    items: [
+      { kind: 'new', cs: 'U každé osoby je vidět věk: u žijící současný, u zemřelé dožitý věk. Když není známé datum narození nebo úmrtí nebo se neví, zda osoba žije, je místo věku „?“. U neúplných dat (jen rok, „asi“) je věk označen „asi“. Věk je v detailu osoby, v seznamu Stromu (sloupec Věk) a na kartách grafického stromu.', en: 'Every person shows their age: the current age of a living person, the age at death of a deceased one. When the date of birth or death is missing, or it is not known whether the person is alive, "?" is shown instead. Incomplete dates (a year only, "about") make the age "about". The age is in the person detail, in the Tree list (column Age) and on the cards of the graphical tree.' },
+    ],
+  },
+  {
     version: '1.9.1',
     date: '2026-10-20',
     title: { cs: 'Jednotný detail osoby', en: 'One person detail everywhere' },

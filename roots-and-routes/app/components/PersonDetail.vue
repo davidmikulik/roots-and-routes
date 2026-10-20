@@ -125,6 +125,7 @@ const avatar = computed(() => {
         <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
           <LifespanTips :person="person" hide-empty plain />
           <span v-if="livingText" class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700" data-living>{{ livingText }}</span>
+          <span class="ml-1 whitespace-nowrap">· <PersonAge :person="person" /></span>
         </p>
       </div>
       <button

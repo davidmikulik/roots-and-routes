@@ -6,7 +6,7 @@ import { useT } from '~~/composables/useT'
 const props = defineProps<{
   name: string
   /** Missing for the invented "unknown partner" card */
-  person?: { birth?: GedcomEvent; death?: GedcomEvent }
+  person?: { birth?: GedcomEvent; death?: GedcomEvent; living?: boolean }
   gender: 'male' | 'female' | 'unknown'
   isRoot: boolean
   /** The person has relatives outside the shown part of the tree */
@@ -41,6 +41,7 @@ const frame = computed(() => {
       >{{ name }}</span>
       <span v-if="person" class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
         <LifespanTips :person="person" :focusable="false" hide-empty />
+        <span class="whitespace-nowrap"> · <PersonAge :person="person" compact /></span>
       </span>
     </span>
     <span

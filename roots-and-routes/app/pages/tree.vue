@@ -381,6 +381,9 @@ const deletePerson = async (person: AppPerson) => {
                 {{ t('tree.col.lifespan') }}
               </th>
               <th class="text-left p-4 font-bold" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">
+                {{ t('tree.col.age') }}
+              </th>
+              <th class="text-left p-4 font-bold" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">
                 {{ t('tree.col.generation') }}
               </th>
               <th class="text-left p-4 font-bold" :class="{ 'text-gray-300': isDark, 'text-gray-700': !isDark }">
@@ -412,6 +415,9 @@ const deletePerson = async (person: AppPerson) => {
               </td>
               <td class="p-4">
                 <LifespanTips :person="person" />
+              </td>
+              <td class="p-4" data-age-cell>
+                <PersonAge :person="gedcomStore.individuals.value.get(person.id) || person" compact />
               </td>
               <td class="p-4">
                 {{ person.generation }}

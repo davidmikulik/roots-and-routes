@@ -80,7 +80,7 @@ export default defineMessages({
   'settings.about.features': 'Features',
   'settings.about.f1': 'GEDCOM import, merge and export, with attachments (ZIP)',
   'settings.about.f2': 'Map of events with historical maps and your own uploaded map layers',
-  'settings.about.f3': 'Family tree list and graphical tree, a shared person editor and detail, sources of every fact, living or deceased',
+  'settings.about.f3': 'Family tree list and graphical tree, a shared person editor and detail, sources of every fact, living or deceased, age',
   'settings.about.f4': 'Search by family name, incomplete dates, names after marriage, anonymous mode',
   'settings.about.f5': 'User accounts with permissions (demo, read, edit, administer) and separate family trees that can be shared',
 }, {
@@ -163,7 +163,7 @@ export default defineMessages({
   'settings.about.features': 'Funkce',
   'settings.about.f1': 'Import, sloučení a export GEDCOM, i s přílohami (ZIP)',
   'settings.about.f2': 'Mapa událostí s historickými mapami a vlastními nahranými vrstvami',
-  'settings.about.f3': 'Seznam osob a grafický strom, společný editor a detail osoby, zdroje každého údaje, žijící a zemřelí',
+  'settings.about.f3': 'Seznam osob a grafický strom, společný editor a detail osoby, zdroje každého údaje, žijící a zemřelí, věk',
   'settings.about.f4': 'Hledání podle rodového jména, neúplná data, jména po sňatku, anonymní režim',
   'settings.about.f5': 'Uživatelské účty s oprávněními (demo, číst, editovat, administrovat) a samostatné rodokmeny, které jde přidělit dalším',
 })

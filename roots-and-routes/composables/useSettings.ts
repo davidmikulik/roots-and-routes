@@ -17,7 +17,7 @@ export interface AppSettings {
   language: Language
   // baseLayer / historicLayer / extraLayers (overlays switched on): ids from utils/map/layers.ts; historicOpacity 0–100 %
   map: { defaultZoom: number; showClusters: boolean; showMigrationLines: boolean; baseLayer: string; historicLayer: string; historicOpacity: number; placeNames: boolean; extraLayers: string[] }
-  tree: { defaultView: TreeView; maxGenerations: number; showDetails: boolean }
+  tree: { defaultView: TreeView; maxGenerations: number }
   data: { autoSave: boolean; backupOnImport: boolean; backupCount: number }
   privacy: { anonymousMode: boolean }
 }
@@ -30,7 +30,7 @@ export const LANGUAGES: { value: Language; label: string }[] = [
 export const createDefaultSettings = (): AppSettings => ({
   language: 'en',
   map: { defaultZoom: 7, showClusters: true, showMigrationLines: false, baseLayer: 'osm', historicLayer: 'none', historicOpacity: 70, placeNames: false, extraLayers: [] },
-  tree: { defaultView: 'list', maxGenerations: 10, showDetails: true },
+  tree: { defaultView: 'list', maxGenerations: 10 },
   data: { autoSave: true, backupOnImport: true, backupCount: 5 },
   privacy: { anonymousMode: false },
 })
@@ -70,7 +70,6 @@ export const sanitizeSettings = (input: unknown): AppSettings => {
     tree: {
       defaultView: tree.defaultView === 'tree' || tree.defaultView === 'chart' || tree.defaultView === 'list' ? tree.defaultView : defaults.tree.defaultView,
       maxGenerations: int(tree.maxGenerations, defaults.tree.maxGenerations, 1, 20),
-      showDetails: bool(tree.showDetails, defaults.tree.showDetails),
     },
     data: {
       autoSave: bool(data.autoSave, defaults.data.autoSave),

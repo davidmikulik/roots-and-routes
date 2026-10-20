@@ -335,7 +335,6 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
               <p class="text-sm opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.tree.maxGenerationsHint') }}</p>
             </div>
             <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <SettingsToggle v-model="settings.tree.showDetails" icon="📋" :label="t('settings.tree.showDetails')" :description="t('settings.tree.showDetailsHint')" />
             </div>
           </div>
         </div>

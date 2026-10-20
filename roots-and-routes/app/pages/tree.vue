@@ -5,11 +5,10 @@ import { usePersonEditor } from '~~/composables/usePersonEditor'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
 import { useAnonymize } from '~~/composables/useAnonymize'
-import { messages, type MessageKey } from '~~/i18n'
 import { useT } from '~~/composables/useT'
 import { useKnownLocations } from '~~/composables/useKnownLocations'
 import { normalizeText } from '~~/utils/gedcom/names'
-import type { AppPerson, FamilyTree, GedcomEvent } from '~~/types/gedcom'
+import type { AppPerson, FamilyTree } from '~~/types/gedcom'
 
 const { t } = useT()
 const colorMode = useColorMode()
@@ -46,45 +45,9 @@ const rootPersonId = ref<string | null>(null)
 // The person editor shared with the Graphical tree (app/components/PersonEditor.vue)
 const editor = usePersonEditor(gedcomStore)
 
-const eventLabel = (code: string): string => {
-  const key = `tree.event.${code}`
-  return key in messages.en ? t(key as MessageKey) : code
-}
-
-// Living or deceased (a death event, also without a date) next to the years of life; nothing when not known
-const selectedLiving = computed(() => {
-  const individual = selectedPerson.value ? gedcomStore.individuals.value.get(selectedPerson.value.id) : undefined
-  if (!individual || anon.enabled.value) return ''
-  if (individual.death) return t(individual.sex === 'M' ? 'tree.living.wasM' : individual.sex === 'F' ? 'tree.living.wasF' : 'tree.living.was')
-  return individual.living ? t('tree.living.isLiving') : ''
-})
-
-// Detail of the selected person: geographic events with a hover bubble (place); years of life are in LifespanTips.vue
-const selectedGeoEvents = computed(() => {
-  const person = selectedPerson.value
-  const individual = person ? gedcomStore.individuals.value.get(person.id) : undefined
-  if (!individual) return []
-  const withCoordinates = (event?: GedcomEvent): event is GedcomEvent =>
-    !!event?.coordinates && !Number.isNaN(event.coordinates[0]) && !Number.isNaN(event.coordinates[1])
-  // Same events and order as AppPerson.allCoordinates (convertToAppPerson)
-  return [individual.birth, individual.baptism, individual.christening, individual.death, individual.burial, individual.cremation, ...individual.events]
-    .filter(withCoordinates)
-    .map((event, index) => ({ key: `${index}-${event.type}`, type: String(event.type), place: event.place || '' }))
-})
-
-// Historical map sheets of the selected person's places (Admin → Known locations); not in the anonymous mode
+// Historical map sheets of the places in the detail (PersonDetail.vue reads the shared catalog)
 const knownLocations = useKnownLocations()
 knownLocations.autoLoad()
-const selectedArchiveMaps = computed(() => {
-  if (anon.enabled.value) return []
-  const places = [...new Set(selectedGeoEvents.value.map(event => event.place).filter(Boolean))]
-  return places.map(place => ({ place, maps: knownLocations.archiveMapsFor(place) })).filter(entry => entry.maps.length)
-})
-
-const placeTip = (place: string): string => {
-  if (anon.enabled.value) return t('tree.placeHidden')
-  return place || t('tree.placeUnknown')
-}
 
 // Get family tree from store
 const familyTree = computed<FamilyTree | null>(() => {
@@ -121,12 +84,6 @@ const filteredPeople = computed<AppPerson[]>(() => {
 
 const setViewMode = (mode: 'tree' | 'chart' | 'list') => {
   viewMode.value = mode
-}
-
-const getPersonColor = (person: AppPerson): string => {
-  if (person.sex === 'M') return '#3b82f6'
-  if (person.sex === 'F') return '#ec4899'
-  return '#6b7280'
 }
 
 const selectPerson = (person: AppPerson) => {
@@ -528,86 +485,28 @@ const deletePerson = async (person: AppPerson) => {
         </div>
       </div>
 
-      <!-- Selected Person Details -->
-      <div v-if="selectedPerson" class="relative mt-8 p-6 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
-        <button
-          @click="clearSelection"
-          class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300"
+      <!-- Detail of the selected person: the same component as on the map and in the graphical tree -->
+      <div v-if="selectedPerson" class="mt-8 rounded-lg border p-5" :class="{ 'bg-gray-800 border-gray-600 text-white': isDark, 'bg-white border-gray-200': !isDark }" data-tree-detail>
+        <PersonDetail
+          :file="gedcomStore.state.value.file"
+          :person-id="selectedPerson.id"
+          @close="clearSelection"
+          @select-person="selectById"
         >
-          ×
-        </button>
-        <div v-if="adminAuth.canEdit.value" class="absolute top-4 right-14 flex gap-3 text-sm">
-          <button @click="deletePerson(selectedPerson)" class="text-red-600 underline">{{ t('tree.delete') }}</button>
-        </div>
-        
-        <div class="flex items-start gap-6">
-          <div class="w-20 h-20 rounded-full flex items-center justify-center text-4xl shadow-lg" :style="{ backgroundColor: getPersonColor(selectedPerson) }">
-            <span class="text-white">
-              {{ selectedPerson.sex === 'M' ? '👨' : selectedPerson.sex === 'F' ? '👩' : '👤' }}
-            </span>
-          </div>
-          
-          <div class="flex-1">
-            <h2 class="text-2xl font-bold mb-2" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ anon.personName(selectedPerson) }}
-            </h2>
-            <PersonActions :editor="editor" :person-id="selectedPerson.id" class="mb-4" />
-            
-            <div v-if="treeSettings.showDetails" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <div class="opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ t('tree.col.lifespan') }}
-                </div>
-                <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  <LifespanTips :person="selectedPerson" />
-                  <span v-if="selectedLiving" class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700" data-living>{{ selectedLiving }}</span>
-                </div>
-              </div>
-              <div>
-                <div class="opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ t('tree.col.generation') }}
-                </div>
-                <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  {{ selectedPerson.generation }}
-                </div>
-              </div>
-              <div>
-                <div class="opacity-60" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                  {{ t('tree.col.sex') }}
-                </div>
-                <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-                  {{ selectedPerson.sex === 'M' ? t('tree.sex.male') : selectedPerson.sex === 'F' ? t('tree.sex.female') : t('tree.sex.unknown') }}
-                </div>
-              </div>
+          <template #footer>
+            <!-- Visitors and the permission "demo" get no places, so the map would be empty for them -->
+            <NuxtLink
+              v-if="adminAuth.canRead.value"
+              :to="{ path: '/map', query: { person: selectedPerson.id } }"
+              class="mt-4 inline-block text-sm font-medium text-primary-700 underline dark:text-primary-300"
+              data-choose-on-map
+            >{{ t('graph.detail.chooseOnMap') }}</NuxtLink>
+            <div class="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+              <PersonActions :editor="editor" :person-id="selectedPerson.id" />
+              <button v-if="adminAuth.canEdit.value" type="button" class="text-sm text-red-600 underline" @click="deletePerson(selectedPerson)">{{ t('tree.delete') }}</button>
             </div>
-            
-            <div v-if="treeSettings.showDetails && selectedGeoEvents.length" class="mt-4">
-              <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                {{ t('tree.geoEvents') }}
-              </div>
-              <div class="flex gap-2 flex-wrap">
-                <HoverTip v-for="event in selectedGeoEvents" :key="event.key" :text="placeTip(event.place)">
-                  <span class="block cursor-help px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-xs">
-                    {{ eventLabel(event.type) }}
-                  </span>
-                </HoverTip>
-              </div>
-            </div>
-
-            <div v-if="selectedArchiveMaps.length" class="mt-4" data-archive-maps>
-              <div class="opacity-60 text-sm mb-2" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">
-                {{ t('tree.archiveMaps') }}
-              </div>
-              <div v-for="entry in selectedArchiveMaps" :key="entry.place" class="mb-2">
-                <div class="text-sm font-medium">{{ entry.place }}</div>
-                <ArchiveMapLinks :maps="entry.maps" :show-source="entry === selectedArchiveMaps.at(-1)" />
-              </div>
-            </div>
-
-            <PersonSources :file="gedcomStore.state.value.file" :person-id="selectedPerson.id" class="mt-4" />
-            <PersonLinks :file="gedcomStore.state.value.file" :person-id="selectedPerson.id" class="mt-4" />
-          </div>
-        </div>
+          </template>
+        </PersonDetail>
       </div>
     </div>
 

@@ -20,6 +20,15 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.9.1',
+    date: '2026-10-20',
+    title: { cs: 'Jednotný detail osoby', en: 'One person detail everywhere' },
+    items: [
+      { kind: 'improved', cs: 'Detail osoby ve Stromu (zobrazení stromu, grafu i seznamu) je stejný jako na mapě a v grafickém stromu: všechny události s místy, rodiče, partneři a děti (klepnutím se přejde na jejich detail), zdroje, odkazy a odkaz Vybrat na mapě.', en: 'The person detail on the Tree page (tree, chart and list views) is the same as on the map and in the graphical tree: all events with places, parents, partners and children (a click opens their detail), sources, links and Choose on the map.' },
+      { kind: 'improved', cs: 'Nastavení „Zobrazit podrobnosti“ ve Stromu odpadlo, detail ukazuje vždy všechno.', en: 'The Tree setting "Show detailed info" is gone, the detail always shows everything.' },
+    ],
+  },
+  {
     version: '1.9.0',
     date: '2026-10-20',
     title: { cs: 'Zdroje údajů a žijící osoby', en: 'Sources of facts and living people' },

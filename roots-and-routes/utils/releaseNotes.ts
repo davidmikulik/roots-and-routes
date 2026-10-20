@@ -20,6 +20,17 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.9.0',
+    date: '2026-10-20',
+    title: { cs: 'Zdroje údajů a žijící osoby', en: 'Sources of facts and living people' },
+    items: [
+      { kind: 'new', cs: 'Ke každému údaji osoby (jméno, jméno po sňatku, pohlaví, narození, úmrtí, sňatek a další události) jde v editoru připojit zdroj: existující odkaz nebo přílohu osoby, nebo rovnou nový. V detailu osoby jsou Zdroje údajů s čísly odkazů.', en: 'Every fact of a person (name, name after marriage, sex, birth, death, marriage and other events) can have its sources in the editor: an existing link or attachment of the person, or a new one. The person detail lists the Sources of the facts with the numbers of the links.' },
+      { kind: 'new', cs: 'U osoby jde zapsat, zda žije, zemřela, nebo to nevíme. Zemřelá osoba nemusí mít datum úmrtí; detail ukazuje „žije“ nebo „zemřel(a)“.', en: 'A person can be recorded as living, deceased or not known. A deceased person needs no date of death; the detail shows "living" or "deceased".' },
+      { kind: 'fixed', cs: 'Zdroje událostí z importovaného souboru GEDCOM se při uložení osoby už neztrácejí a úmrtí bez data („zemřel“) zůstane zachované.', en: 'Sources of events from an imported GEDCOM file are no longer lost when a person is saved, and a death without a date ("deceased") is kept.' },
+      { kind: 'fixed', cs: 'Po uložení osoby ve Stromu se znovu otevře její detail.', en: 'After saving a person on the Tree page, their detail opens again.' },
+    ],
+  },
+  {
     version: '1.8.1',
     date: '2026-10-19',
     title: { cs: 'Veřejný rodokmen pro přihlášené a známá místa', en: 'The public family tree for logged-in users and known places' },

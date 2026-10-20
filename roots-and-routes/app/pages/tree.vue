@@ -51,6 +51,14 @@ const eventLabel = (code: string): string => {
   return key in messages.en ? t(key as MessageKey) : code
 }
 
+// Living or deceased (a death event, also without a date) next to the years of life; nothing when not known
+const selectedLiving = computed(() => {
+  const individual = selectedPerson.value ? gedcomStore.individuals.value.get(selectedPerson.value.id) : undefined
+  if (!individual || anon.enabled.value) return ''
+  if (individual.death) return t(individual.sex === 'M' ? 'tree.living.wasM' : individual.sex === 'F' ? 'tree.living.wasF' : 'tree.living.was')
+  return individual.living ? t('tree.living.isLiving') : ''
+})
+
 // Detail of the selected person: geographic events with a hover bubble (place); years of life are in LifespanTips.vue
 const selectedGeoEvents = computed(() => {
   const person = selectedPerson.value
@@ -552,6 +560,7 @@ const deletePerson = async (person: AppPerson) => {
                 </div>
                 <div :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
                   <LifespanTips :person="selectedPerson" />
+                  <span v-if="selectedLiving" class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700" data-living>{{ selectedLiving }}</span>
                 </div>
               </div>
               <div>
@@ -595,6 +604,7 @@ const deletePerson = async (person: AppPerson) => {
               </div>
             </div>
 
+            <PersonSources :file="gedcomStore.state.value.file" :person-id="selectedPerson.id" class="mt-4" />
             <PersonLinks :file="gedcomStore.state.value.file" :person-id="selectedPerson.id" class="mt-4" />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { computed, effectScope, onMounted, watch } from 'vue'
-import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
+import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, GedcomSourceCitation, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import type { DatabaseInfo } from '~~/types/accounts'
 import { parseGedcom, parseGedcomDate, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
@@ -40,11 +40,29 @@ export interface IndividualEventDraft {
   type: GedcomEventType
   date: string
   existingDate?: GedcomDate
+  // Citations of SOUR records from the import; kept as they are (the editor works with links as sources)
+  existingCitations?: GedcomSourceCitation[]
   place: string
   latitude: string
   longitude: string
   description: string
+  // Sources: keys of the person's links (LinkDraft.key)
+  sources: string[]
 }
+
+// Sources of the facts of a person: keys of the person's links (LinkDraft.key). In GEDCOM "2 OBJE @M1@" under the
+// fact (NAME, SEX, BIRT, DEAT, MARR, other events).
+export interface FactSources {
+  name: string[]
+  marriedName: string[]
+  sex: string[]
+  birth: string[]
+  death: string[]
+  marriage: string[]
+}
+
+// Living, deceased (a death event, also without a date: "1 DEAT Y") or not known
+export type LivingStatus = 'unknown' | 'living' | 'deceased'
 
 export interface IndividualDraft {
   xrefId?: string
@@ -54,6 +72,7 @@ export interface IndividualDraft {
   surname: string
   marriedSurname: string
   sex: 'M' | 'F' | ''
+  livingStatus: LivingStatus
   birthDate: string
   birthPlace: string
   birthLatitude: string
@@ -74,6 +93,7 @@ export interface IndividualDraft {
   marriageLongitude: string
   events: IndividualEventDraft[]
   links: LinkDraft[]
+  sources: FactSources
   // A new parent: the id of the child this person becomes the father / mother of (usePersonEditor, relation father/mother)
   parentOf?: string
 }
@@ -82,6 +102,8 @@ export interface IndividualDraft {
 // (media/<name>, served by /api/media/<name>); `url` is then the original address.
 export interface LinkDraft {
   id?: string
+  // Identifies the link in the editor before it has an id, so the facts can name it as their source
+  key?: string
   url: string
   title: string
   file?: string
@@ -123,13 +145,38 @@ const shrinkImage = async (file: Blob): Promise<Blob> => {
 
 export const isStoredMedia =(file?: string): file is string => !!file && file.startsWith('media/')
 
+// One OBJE record as a link of the editor and the detail (key = id)
+export const linkDraftOf = (file: GedcomFile, id: string): LinkDraft | null => {
+  const media = file.multimedia.get(id)
+  if (!media?.file) return null
+  return isStoredMedia(media.file)
+    ? { id: media.xrefId, key: media.xrefId, url: media.url || '', title: media.title || '', file: media.file, format: media.format, copiedFrom: media.url }
+    : { id: media.xrefId, key: media.xrefId, url: media.file, title: media.title || '' }
+}
+
 // The links of a person for the editor and the detail
 export const linksOf = (file: GedcomFile, individual: GedcomIndividual): LinkDraft[] => individual.multimediaLinks
-  .map(id => file.multimedia.get(id))
-  .filter((media): media is NonNullable<typeof media> => !!media && !!media.file)
-  .map(media => isStoredMedia(media.file)
-    ? { id: media.xrefId, url: media.url || '', title: media.title || '', file: media.file, format: media.format, copiedFrom: media.url }
-    : { id: media.xrefId, url: media.file!, title: media.title || '' })
+  .map(id => linkDraftOf(file, id))
+  .filter((link): link is LinkDraft => !!link)
+
+// Every OBJE record something in the tree points to: people, families, names, sex and events
+export const mediaReferences = (file: GedcomFile): Set<string> => {
+  const used = new Set<string>()
+  const add = (ids?: string[]) => ids?.forEach(id => used.add(id))
+  const addEvents = (events: (GedcomEvent | undefined)[]) => events.forEach(event => add(event?.multimediaLinks))
+  for (const person of file.individuals.values()) {
+    add(person.multimediaLinks)
+    add(person.sexLinks)
+    person.names.forEach(name => add(name.multimediaLinks))
+    addEvents([person.birth, person.baptism, person.christening, person.death, person.burial, person.cremation, ...person.events])
+  }
+  for (const family of file.families.values()) {
+    add(family.multimediaLinks)
+    addEvents([family.marriage, family.divorce, ...(family.engagements || [])])
+  }
+  for (const source of file.sources.values()) add(source.multimediaLinks)
+  return used
+}
 
 const DATABASE_NAME = 'roots-and-routes'
 const STORE_NAME = 'gedcom'
@@ -677,10 +724,12 @@ export const useGedcomStore = () => {
     }
   }
 
-  // Writes the links of the editor as OBJE records. A record the person no longer links to is removed when nobody else
-  // uses it. Every link needs an address and a description.
-  const saveLinks = (file: GedcomFile, ownerId: string, previous: string[], links: LinkDraft[]): string[] => {
+  // Writes the links of the editor as OBJE records; returns their ids and the id of every link key (the sources of the
+  // facts name links by key). Records nobody uses any more are removed after the person is saved (pruneMedia).
+  // Every link needs an address and a description.
+  const saveLinks = (file: GedcomFile, links: LinkDraft[]): { ids: string[]; idByKey: Map<string, string> } => {
     const ids: string[] = []
+    const idByKey = new Map<string, string>()
     for (const link of links) {
       const url = link.url.trim()
       const title = link.title.trim()
@@ -702,12 +751,16 @@ export const useGedcomStore = () => {
           : { file: url, url: undefined, format: 'url' }),
       })
       ids.push(id)
+      if (link.key) idByKey.set(link.key, id)
     }
-    const others = [...[...file.individuals.values()].filter(person => person.xrefId !== ownerId), ...file.families.values()]
-    const usedElsewhere = new Set(others.flatMap(owner => owner.multimediaLinks || []))
-    for (const id of previous) if (!ids.includes(id) && !usedElsewhere.has(id)) file.multimedia.delete(id)
+    return { ids, idByKey }
+  }
+
+  // Removes those of the given OBJE records that nothing in the tree points to any more (the file stays in Blob)
+  const pruneMedia = (file: GedcomFile, candidates: string[]) => {
+    const used = mediaReferences(file)
+    for (const id of candidates) if (!used.has(id)) file.multimedia.delete(id)
     file.metadata.totalMultimedia = file.multimedia.size
-    return ids
   }
 
   // After a person was edited: the catalog of known locations (/api/admin/locations) and the tree are synced, see
@@ -767,7 +820,28 @@ export const useGedcomStore = () => {
     const birth = buildName(givenName, surname, oldBirth)
     if (married && !birth.type) birth.type = 'birth'
     const otherNames = (existing?.names || []).filter(name => name !== oldBirth && name !== oldMarried && !isMarriedName(name))
+    // Links first: the sources of the facts point to them
+    const previousMedia = existing ? [...mediaReferences({ ...file, individuals: new Map([[xrefId, existing]]), families: new Map(existing.familiesAsSpouse.flatMap(id => (file.families.has(id) ? [[id, file.families.get(id)!] as const] : []))), sources: new Map() })] : []
+    const { ids: linkIds, idByKey } = saveLinks(file, draft.links)
+    const sourceIds = (keys: string[] = []): string[] | undefined => {
+      const ids = [...new Set(keys.map(key => idByKey.get(key)).filter((id): id is string => !!id))]
+      return ids.length ? ids : undefined
+    }
+    // An event with its sources; sources alone make an event too (e.g. a birth record without a known date).
+    // Citations of SOUR records from the import stay.
+    const withSources = (type: GedcomEventType, event: GedcomEvent | undefined, keys: string[], citations?: GedcomSourceCitation[]): GedcomEvent | undefined => {
+      const links = sourceIds(keys)
+      if (!event && !links && !citations?.length) return undefined
+      return { ...(event || { type }), multimediaLinks: links, sourceCitations: citations?.length ? citations : undefined }
+    }
+    birth.multimediaLinks = sourceIds(draft.sources.name)
+    if (married) married.multimediaLinks = sourceIds(draft.sources.marriedName)
     const names = [birth, ...(married ? [married] : []), ...otherNames]
+    // Death: only when deceased; a deceased person without any details still gets the event ("1 DEAT Y")
+    const deceased = draft.livingStatus === 'deceased'
+    const death = deceased
+      ? withSources('DEAT', createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date, draft.deathCause || ''), draft.sources.death, existing?.death?.sourceCitations) || { type: 'DEAT' as const }
+      : undefined
     const individual: GedcomIndividual = {
       ...(existing || {
         xrefId,
@@ -786,11 +860,15 @@ export const useGedcomStore = () => {
       xrefId,
       names,
       sex: draft.sex,
-      birth: createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date),
-      death: createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date, draft.deathCause || ''),
+      sexLinks: draft.sex ? sourceIds(draft.sources.sex) : undefined,
+      living: draft.livingStatus === 'living' ? true : undefined,
+      birth: withSources('BIRT', createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date), draft.sources.birth, existing?.birth?.sourceCitations),
+      death,
       notes: draft.notes.split(/\r?\n/).map(note => note.trim()).filter(Boolean),
-      multimediaLinks: saveLinks(file, xrefId, existing?.multimediaLinks || [], draft.links),
-      events: draft.events.map(event => createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate)).filter((event): event is GedcomEvent => Boolean(event)),
+      multimediaLinks: linkIds,
+      events: draft.events
+        .map(event => withSources(event.type, createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate), event.sources, event.existingCitations))
+        .filter((event): event is GedcomEvent => Boolean(event)),
     }
     file.individuals.set(xrefId, individual)
 
@@ -866,7 +944,7 @@ export const useGedcomStore = () => {
         }
         file.families.set(family.xrefId, family)
       }
-      family.marriage = createEvent('MARR', draft.marriageDate, draft.marriagePlace, draft.marriageLatitude, draft.marriageLongitude, '', family.marriage?.date)
+      family.marriage = withSources('MARR', createEvent('MARR', draft.marriageDate, draft.marriagePlace, draft.marriageLatitude, draft.marriageLongitude, '', family.marriage?.date), draft.sources.marriage, family.marriage?.sourceCitations)
       for (const personId of [xrefId, draft.spouseId]) {
         const person = file.individuals.get(personId)
         if (person && !person.familiesAsSpouse.includes(family.xrefId)) person.familiesAsSpouse.push(family.xrefId)
@@ -876,6 +954,8 @@ export const useGedcomStore = () => {
     // Known locations: fill coordinates from the catalog, add new places, pass changed coordinates on
     if (import.meta.client) await syncLocationsAfterEdit(file, personEvents(file, individual), locationsBefore)
 
+    // Links the person and their facts no longer use, unless something else in the tree does
+    pruneMedia(file, previousMedia)
     file.metadata.totalIndividuals = file.individuals.size
     file.metadata.totalFamilies = file.families.size
     const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }

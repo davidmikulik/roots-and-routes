@@ -68,7 +68,9 @@ const linkClass = 'text-primary-700 dark:text-primary-300 underline break-all'
     <h4 v-if="compact" class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ t('tree.links.title') }}</h4>
     <div v-else class="mb-2 text-sm opacity-60">{{ t('tree.links.title') }}</div>
     <ul class="space-y-1 text-sm">
-      <li v-for="link in links" :key="link.id" :data-link="link.id">
+      <li v-for="(link, index) in links" :key="link.id" :data-link="link.id">
+        <!-- The number the sources of the facts refer to (PersonSources.vue) -->
+        <span class="mr-1 text-xs font-semibold text-primary-700 dark:text-primary-300">[{{ index + 1 }}]</span>
         <template v-if="isStoredMedia(link.file)">
           <span aria-hidden="true" class="mr-1">📎</span>
           <template v-if="isWebAddress(link.url)">

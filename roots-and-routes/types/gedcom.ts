@@ -46,6 +46,10 @@ export interface GedcomIndividual {
   sourceCitations: GedcomSourceCitation[]
   attributes: Record<string, string[]>
   userData: Record<string, any>
+  // Sources of the sex (OBJE records, "2 OBJE" under SEX)
+  sexLinks?: string[]
+  // Recorded as living ("1 _LIVING Y"); a death event means deceased, neither means unknown
+  living?: boolean
 }
 
 export interface GedcomFamily {
@@ -71,6 +75,8 @@ export interface GedcomName {
   suffix?: string
   nickname?: string
   type?: string
+  // Sources of the name (OBJE records, "2 OBJE" under NAME)
+  multimediaLinks?: string[]
 }
 
 export interface GedcomEvent {

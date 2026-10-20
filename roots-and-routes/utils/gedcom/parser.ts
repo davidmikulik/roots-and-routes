@@ -51,6 +51,10 @@ class GedcomParser {
   // The NAME record being read: its sub-lines (TYPE, GIVN, SURN, _MARNM…) belong to it
   private currentName: GedcomName | null = null
   private currentNamePerson: GedcomIndividual | null = null
+  // Right after "1 SEX": its "2 OBJE" lines are the sources of the sex
+  private currentSexPerson: GedcomIndividual | null = null
+  // The last "2 SOUR" of an event, for its "3 PAGE"
+  private currentEventCitation: GedcomSourceCitation | null = null
   private currentFamilyEvent: GedcomEvent | null = null
   
   constructor(options: GedcomParseOptions = {}) {
@@ -304,9 +308,15 @@ class GedcomParser {
     }
     if (line.level > 1 && this.inUnknownIndividualTag) return
     if (line.level === 2 && this.currentName && this.currentNamePerson === individual && this.processNameDetail(tag, value, individual)) return
+    // Sources of the sex ("2 OBJE" under SEX); other lines under SEX are ignored
+    if (line.level > 1 && this.currentSexPerson === individual) {
+      if (line.level === 2 && tag === 'OBJE' && value) (individual.sexLinks ||= []).push(normalizeXref(value))
+      return
+    }
 
     this.currentIndividualEvent = null
     this.inUnknownIndividualTag = false
+    this.currentSexPerson = null
     if (line.level === 1) this.currentName = null
     
     switch (tag) {
@@ -319,6 +329,10 @@ class GedcomParser {
       }
       case 'SEX':
         individual.sex = value === 'M' ? 'M' : value === 'F' ? 'F' : ''
+        if (line.level === 1) this.currentSexPerson = individual
+        break
+      case '_LIVING':
+        individual.living = value.trim().toUpperCase() !== 'N'
         break
       case 'FAMC':
         if (value) individual.familiesAsChild.push(normalizeXref(value))
@@ -418,8 +432,18 @@ class GedcomParser {
   private processEventDetail(line: GedcomLine, event: GedcomEvent) {
     const tag = line.tag.toUpperCase()
     const value = line.value
+    // "3 PAGE" of a source citation of the event
+    if (line.level === 3 && tag === 'PAGE' && this.currentEventCitation && event.sourceCitations?.includes(this.currentEventCitation)) { this.currentEventCitation.page = value; return }
     if (line.level !== 2 && tag !== 'LATI' && tag !== 'LONG') return
+    this.currentEventCitation = null
     if (tag === 'DATE') event.date = this.parseDate(value)
+    // Sources of the event: a link or attachment (OBJE record) or a citation of a SOUR record
+    else if (tag === 'OBJE' && value) (event.multimediaLinks ||= []).push(normalizeXref(value))
+    else if (tag === 'SOUR' && value) {
+      const citation: GedcomSourceCitation = { xref: normalizeXref(value) }
+      ;(event.sourceCitations ||= []).push(citation)
+      this.currentEventCitation = citation
+    }
     else if (tag === 'PLAC') event.place = value
     else if (tag === 'CAUS') event.cause = value
     else if (tag === 'AGE') event.age = value
@@ -565,6 +589,10 @@ class GedcomParser {
         return true
       case 'NICK':
         if (value) name.nickname = value.trim()
+        return true
+      // A source of the name (a link or attachment of the person)
+      case 'OBJE':
+        if (value) (name.multimediaLinks ||= []).push(normalizeXref(value))
         return true
       case '_MARNM': {
         const surname = stripSurnameSlashes(value || '')
@@ -817,6 +845,21 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
   const lines: string[] = []
   const version = options?.version || '5.5'
   const encoding = options?.encoding || 'UTF-8'
+  const pointer = (xref: string) => `@${xref.replace(/@/g, '')}@`
+  // Sources of a fact: citations of SOUR records and links or attachments (OBJE records)
+  const appendSources = (event: { sourceCitations?: GedcomSourceCitation[]; multimediaLinks?: string[] }, level: number) => {
+    for (const citation of event.sourceCitations || []) {
+      lines.push(`${level} SOUR ${pointer(citation.xref)}`)
+      if (citation.page) lines.push(`${level + 1} PAGE ${citation.page}`)
+    }
+    for (const media of event.multimediaLinks || []) lines.push(`${level} OBJE ${pointer(media)}`)
+  }
+  // An event line with its details; without any detail "1 DEAT Y" (the event happened, nothing more is known)
+  const appendEvent = (tag: string, event: GedcomEvent, level: number) => {
+    const start = lines.push(`${level} ${tag}`)
+    appendEventDetails(event, level + 1)
+    if (lines.length === start) lines[start - 1] = `${level} ${tag} Y`
+  }
   const appendEventDetails = (event: GedcomEvent, level: number) => {
     if (event.date?.raw) lines.push(`${level} DATE ${event.date.raw}`)
     if (event.place) lines.push(`${level} PLAC ${event.place}`)
@@ -829,6 +872,7 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
       lines.push(`${level + 1} LATI ${Math.abs(latitude!).toFixed(6)}${latitude! < 0 ? 'S' : 'N'}`)
       lines.push(`${level + 1} LONG ${Math.abs(longitude!).toFixed(6)}${longitude! < 0 ? 'W' : 'E'}`)
     }
+    appendSources(event, level)
   }
   
   // Header
@@ -855,12 +899,16 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     for (const name of individual.names) {
       lines.push(`1 NAME ${nameToGedcom(name)}`)
       if (name.type) lines.push(`2 TYPE ${name.type}`)
+      appendSources(name, 2)
     }
     
     // Sex
     if (individual.sex) {
       lines.push(`1 SEX ${individual.sex}`)
+      appendSources({ multimediaLinks: individual.sexLinks }, 2)
     }
+    // Living (our own tag); a death event says deceased
+    if (individual.living && !individual.death) lines.push('1 _LIVING Y')
     
     // Families
     for (const famc of individual.familiesAsChild) {
@@ -882,16 +930,10 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     
     for (const [key, tag] of Object.entries(eventTags)) {
       const event = individual[key as keyof GedcomIndividual] as GedcomEvent | undefined
-      if (event) {
-        lines.push(`1 ${tag}`)
-        appendEventDetails(event, 2)
-      }
+      if (event) appendEvent(tag, event, 1)
     }
     
-    for (const event of individual.events) {
-      lines.push(`1 ${event.type}`)
-      appendEventDetails(event, 2)
-    }
+    for (const event of individual.events) appendEvent(event.type, event, 1)
     
     // Notes
     for (const note of individual.notes) {
@@ -931,18 +973,9 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     }
     
     // Marriage
-    if (family.marriage) {
-      lines.push(`1 MARR`)
-      appendEventDetails(family.marriage, 2)
-    }
-    if (family.divorce) {
-      lines.push(`1 DIV`)
-      appendEventDetails(family.divorce, 2)
-    }
-    for (const engagement of family.engagements || []) {
-      lines.push(`1 ENGA`)
-      appendEventDetails(engagement, 2)
-    }
+    if (family.marriage) appendEvent('MARR', family.marriage, 1)
+    if (family.divorce) appendEvent('DIV', family.divorce, 1)
+    for (const engagement of family.engagements || []) appendEvent('ENGA', engagement, 1)
     
     // Notes
     for (const note of family.notes) {

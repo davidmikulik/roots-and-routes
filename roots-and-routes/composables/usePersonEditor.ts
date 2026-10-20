@@ -3,7 +3,7 @@
 // components must not call useGedcomStore() (every call re-fetches the tree on mount).
 // The dialog is app/components/PersonEditor.vue, the actions app/components/PersonActions.vue (buttons) and PersonActionsMenu.vue (right-click menu).
 import type { GedcomEvent, GedcomFile, GedcomIndividual } from '~~/types/gedcom'
-import { linksOf, type IndividualDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
+import { linkDraftOf, linksOf, type FactSources, type IndividualDraft, type LinkDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
 import { useT } from '~~/composables/useT'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { birthNameOf, formatPersonName, marriedNameOf, nameSortKey, namePartsOf } from '~~/utils/gedcom/names'
@@ -15,12 +15,18 @@ type Store = ReturnType<typeof useGedcomStore>
 
 export function createEmptyDraft(): IndividualDraft {
   return {
-    givenName: '', surname: '', marriedSurname: '', sex: '', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
+    givenName: '', surname: '', marriedSurname: '', sex: '', livingStatus: 'unknown', birthDate: '', birthPlace: '', birthLatitude: '', birthLongitude: '',
     deathDate: '', deathPlace: '', deathCause: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
     marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
+    sources: emptySources(),
   }
 }
+
+export const emptySources = (): FactSources => ({ name: [], marriedName: [], sex: [], birth: [], death: [], marriage: [] })
+
+// A new link of the editor (its key lets the facts name it as their source before it is saved)
+export const newLinkDraft = (): LinkDraft => ({ key: `new-${crypto.randomUUID()}`, url: '', title: '' })
 
 // Dates are edited as GEDCOM text ("1850", "ABT MAR 1850"), so a year or a month alone stays as precise as it was
 const dateText = (event?: GedcomEvent): string => event?.date?.raw?.trim() || ''
@@ -31,12 +37,33 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
   const parentFamily = individual.familiesAsChild.map(id => file.families.get(id)).find(Boolean)
   const partnerFamily = individual.familiesAsSpouse.map(id => file.families.get(id)).find(Boolean)
   const firstPartner = partnerFamily ? (partnerFamily.husband === individual.xrefId ? partnerFamily.wife : partnerFamily.husband) : ''
+  const birthName = birthNameOf(individual.names)
+  const marriedName = marriedNameOf(individual.names)
+  const sources: FactSources = {
+    name: [...(birthName?.multimediaLinks || [])],
+    marriedName: [...(marriedName?.multimediaLinks || [])],
+    sex: [...(individual.sexLinks || [])],
+    birth: [...(individual.birth?.multimediaLinks || [])],
+    death: [...(individual.death?.multimediaLinks || [])],
+    marriage: [...(partnerFamily?.marriage?.multimediaLinks || [])],
+  }
+  // A source can be a link the person does not list (e.g. the marriage record saved by the partner): it joins the
+  // person's links in the editor, so it can be shown and chosen
+  const links = linksOf(file, individual)
+  const sourceIds = [...Object.values(sources).flat(), ...individual.events.flatMap(event => event.multimediaLinks || [])]
+  for (const id of new Set(sourceIds)) {
+    const link = links.some(existing => existing.id === id) ? null : linkDraftOf(file, id)
+    if (link) links.push(link)
+  }
+  const known = new Set(links.map(link => link.key))
+  const onlyKnown = (ids: string[]) => ids.filter(id => known.has(id))
   return {
     xrefId: individual.xrefId,
     givenName: namePartsOf(birthNameOf(individual.names)).given,
     surname: namePartsOf(birthNameOf(individual.names)).surname,
     marriedSurname: namePartsOf(marriedNameOf(individual.names)).surname,
     sex: individual.sex,
+    livingStatus: individual.death ? 'deceased' : individual.living ? 'living' : 'unknown',
     birthDate: dateText(individual.birth),
     birthPlace: individual.birth?.place || '',
     birthLatitude: coordinate(individual.birth, 0),
@@ -57,8 +84,10 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
     events: individual.events.map(event => ({
       type: event.type, date: dateText(event), existingDate: event.date, place: event.place || '',
       latitude: coordinate(event, 0), longitude: coordinate(event, 1), description: event.description || '',
+      existingCitations: event.sourceCitations, sources: onlyKnown(event.multimediaLinks || []),
     })),
-    links: linksOf(file, individual),
+    links,
+    sources: Object.fromEntries(Object.entries(sources).map(([fact, ids]) => [fact, onlyKnown(ids)])) as unknown as FactSources,
   }
 }
 
@@ -167,13 +196,13 @@ export const usePersonEditor = (store: Store) => {
 
   const errorText = (error: any): string => error?.data?.statusMessage || error?.message || t('tree.unknownError')
 
-  // Saves the draft; returns the person's id, or null when it failed (the error was shown)
+  // Saves the draft; returns the person's id, or null when it failed (the error was shown). The dialog closes itself
+  // after telling the page (an unmounted component could not emit "saved" any more)
   const save = async (): Promise<string | null> => {
     if ((!draft.value.givenName.trim() && !draft.value.surname.trim()) || saving.value) return null
     saving.value = true
     try {
       const id = await store.savePerson({ ...draft.value, xrefId: editingId.value || undefined })
-      isOpen.value = false
       // Changed coordinates were passed on to other people with the same place, or the catalog could not be updated
       const sync = store.lastLocationSync.value
       if (sync?.error) window.alert(t('tree.locations.syncFailed', { error: sync.error }))

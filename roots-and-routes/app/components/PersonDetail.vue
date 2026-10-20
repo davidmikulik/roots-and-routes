@@ -101,6 +101,14 @@ const family = computed(() => {
     }))
 })
 
+// Living or deceased (a death event, also without a date); nothing when not known. Not in the anonymized data.
+const livingText = computed(() => {
+  const self = person.value
+  if (!self || anon.enabled.value) return ''
+  if (self.death) return t(self.sex === 'M' ? 'tree.living.wasM' : self.sex === 'F' ? 'tree.living.wasF' : 'tree.living.was')
+  return self.living ? t('tree.living.isLiving') : ''
+})
+
 const avatar = computed(() => {
   if (person.value?.sex === 'M') return { emoji: '👨', color: 'bg-blue-500' }
   if (person.value?.sex === 'F') return { emoji: '👩', color: 'bg-pink-500' }
@@ -116,6 +124,7 @@ const avatar = computed(() => {
         <h3 class="break-words text-lg font-bold leading-tight text-gray-900 dark:text-white">{{ anon.personName(person) }}</h3>
         <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
           <LifespanTips :person="person" hide-empty plain />
+          <span v-if="livingText" class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700" data-living>{{ livingText }}</span>
         </p>
       </div>
       <button
@@ -175,6 +184,7 @@ const avatar = computed(() => {
       </ul>
     </section>
 
+    <PersonSources :file="file" :person-id="personId" compact class="mt-3" />
     <PersonLinks :file="file" :person-id="personId" compact class="mt-3" />
 
     <slot name="footer" />

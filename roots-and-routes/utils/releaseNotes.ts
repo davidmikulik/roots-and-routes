@@ -20,6 +20,15 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.10.1',
+    date: '2026-10-21',
+    title: { cs: 'Věk žijících a věk ve všech stromech', en: 'Age of living people in every tree' },
+    items: [
+      { kind: 'improved', cs: 'Osoba bez data úmrtí a bez příznaku „Zemřel(a)“ se považuje za žijící a ukazuje se u ní aktuální věk. V editoru je proto jen volba Žije / Zemřel(a); zemřelou osobu bez známého data úmrtí označte „Zemřel(a)“.', en: 'A person without a date of death and not marked "Deceased" counts as living and shows the current age. The editor therefore offers only Living / Deceased; mark a deceased person whose date of death is not known as "Deceased".' },
+      { kind: 'improved', cs: 'Věk je přímo u osob i v zobrazení stromu a grafu na stránce Strom (k seznamu, detailu a grafickému stromu).', en: 'The age is shown right at the people also in the tree and chart views of the Tree page (besides the list, the detail and the graphical tree).' },
+    ],
+  },
+  {
     version: '1.10.0',
     date: '2026-10-20',
     title: { cs: 'Věk osob', en: 'Age of people' },

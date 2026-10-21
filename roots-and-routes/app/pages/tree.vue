@@ -160,6 +160,7 @@ const descendantGenerations = computed(() => {
   return generations
 })
 
+const individualOf = (xrefId: string) => gedcomStore.individuals.value.get(xrefId)
 const personName = (xrefId: string): string => {
   const person = gedcomStore.individuals.value.get(xrefId)
   return person?.names.length ? anon.personName(person) : xrefId
@@ -459,11 +460,13 @@ const deletePerson = async (person: AppPerson) => {
           <h3 class="font-semibold mb-3">{{ t('tree.parents') }}</h3>
           <button v-for="id in treeRelations.parents" :key="id" @click="selectById(id)" class="block w-full text-left py-2 px-3 mb-2 rounded bg-gray-50 dark:bg-gray-700 hover:ring-2 ring-primary-500">
             {{ personName(id) }}
+            <PersonAge v-if="individualOf(id)" :person="individualOf(id)!" class="block text-xs opacity-60" />
           </button>
           <p v-if="!treeRelations.parents.length" class="text-sm opacity-60">{{ t('tree.noParents') }}</p>
         </section>
         <section class="p-5 rounded-lg border-2 border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-center">
           <h3 class="font-semibold">{{ personName(treeRelations.personId) }}</h3>
+          <PersonAge v-if="individualOf(treeRelations.personId)" :person="individualOf(treeRelations.personId)!" class="block text-sm" />
           <p class="text-sm opacity-70 mt-1">{{ t('tree.selectedPerson') }}</p>
           <button v-if="treeRelations.personId" @click="selectById(treeRelations.personId)" class="mt-3 text-sm underline">{{ t('tree.viewDetails') }}</button>
         </section>
@@ -471,9 +474,11 @@ const deletePerson = async (person: AppPerson) => {
           <h3 class="font-semibold mb-3">{{ t('tree.partnersChildren') }}</h3>
           <button v-for="id in treeRelations.partners" :key="id" @click="selectById(id)" class="block w-full text-left py-2 px-3 mb-2 rounded bg-gray-50 dark:bg-gray-700 hover:ring-2 ring-primary-500">
             {{ personName(id) }} <span class="text-xs opacity-60">{{ t('tree.partner') }}</span>
+            <PersonAge v-if="individualOf(id)" :person="individualOf(id)!" class="block text-xs opacity-60" />
           </button>
           <button v-for="id in treeRelations.children" :key="id" @click="selectById(id)" class="block w-full text-left py-2 px-3 mb-2 rounded bg-gray-50 dark:bg-gray-700 hover:ring-2 ring-primary-500">
             {{ personName(id) }} <span class="text-xs opacity-60">{{ t('tree.child') }}</span>
+            <PersonAge v-if="individualOf(id)" :person="individualOf(id)!" class="block text-xs opacity-60" />
           </button>
           <p v-if="!treeRelations.partners.length && !treeRelations.children.length" class="text-sm opacity-60">{{ t('tree.noPartnersChildren') }}</p>
         </section>
@@ -485,7 +490,10 @@ const deletePerson = async (person: AppPerson) => {
             <h3 class="text-sm font-semibold mb-3">{{ index === 0 ? t('tree.root') : t('tree.generationN', { n: index }) }}</h3>
             <button v-for="id in generation" :key="id" @click="selectById(id)" class="block w-full text-left p-3 mb-2 rounded border bg-white dark:bg-gray-800 dark:border-gray-700 hover:border-primary-500">
               <span class="block font-medium">{{ personName(id) }}</span>
-              <span class="text-xs opacity-60">{{ anon.date(gedcomStore.individuals.value.get(id)?.birth?.date?.raw || '') }}</span>
+              <span v-if="individualOf(id)" class="block text-xs opacity-60">
+                <LifespanTips :person="individualOf(id)!" :focusable="false" hide-empty plain />
+                <span> · </span><PersonAge :person="individualOf(id)!" />
+              </span>
             </button>
           </section>
         </div>

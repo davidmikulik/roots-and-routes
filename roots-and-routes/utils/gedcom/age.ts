@@ -1,6 +1,6 @@
-// Age of a person: the current age of a living person, the length of life of a deceased one. Unknown when it is not
-// known whether the person lives, or a needed date is missing. Dates may be incomplete ("1850", "MAR 1850",
-// "ABT 1850", "BET 1850 AND 1860"): the age is then approximate.
+// Age of a person: the current age of a living person, the length of life of a deceased one. A person without a death
+// record (no date of death, not marked deceased) is living. Unknown when a needed date is missing. Dates may be
+// incomplete ("1850", "MAR 1850", "ABT 1850", "BET 1850 AND 1860"): the age is then approximate.
 import type { GedcomEvent } from '~~/types/gedcom'
 import { splitGedcomDate } from '~~/utils/gedcom/dates'
 
@@ -38,7 +38,7 @@ const yearsBetween = (from: DatePoint, to: DatePoint): { years: number; approxim
   return { years, approximate: !from.certain || !to.certain || !decidable }
 }
 
-export function personAge(person: { birth?: GedcomEvent; death?: GedcomEvent; living?: boolean }, today: Date = new Date()): PersonAge {
+export function personAge(person: { birth?: GedcomEvent; death?: GedcomEvent }, today: Date = new Date()): PersonAge {
   const birth = pointOf(person.birth?.date?.raw)
   if (person.death) {
     const death = pointOf(person.death.date?.raw)
@@ -46,11 +46,8 @@ export function personAge(person: { birth?: GedcomEvent; death?: GedcomEvent; li
     const { years, approximate } = yearsBetween(birth, death)
     return years >= 0 ? { kind: 'lifespan', years, approximate } : { kind: 'unknown' }
   }
-  if (person.living) {
-    if (!birth) return { kind: 'unknown' }
-    const now: DatePoint = { year: today.getFullYear(), month: today.getMonth() + 1, day: today.getDate(), certain: true }
-    const { years, approximate } = yearsBetween(birth, now)
-    return years >= 0 ? { kind: 'living', years, approximate } : { kind: 'unknown' }
-  }
-  return { kind: 'unknown' }
+  if (!birth) return { kind: 'unknown' }
+  const now: DatePoint = { year: today.getFullYear(), month: today.getMonth() + 1, day: today.getDate(), certain: true }
+  const { years, approximate } = yearsBetween(birth, now)
+  return years >= 0 ? { kind: 'living', years, approximate } : { kind: 'unknown' }
 }

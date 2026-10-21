@@ -182,7 +182,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <SourcePicker v-if="form.sex" v-model="form.sources.sex" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.sex')" class="-mt-2 sm:col-start-2" />
         <label class="text-sm">{{ t('tree.field.living') }}
           <select v-model="form.livingStatus" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :title="t('tree.field.livingHint')" data-field-living>
-            <option value="unknown">{{ t('tree.living.unknown') }}</option>
             <option value="living">{{ t('tree.living.living') }}</option>
             <option value="deceased">{{ t('tree.living.deceased') }}</option>
           </select>

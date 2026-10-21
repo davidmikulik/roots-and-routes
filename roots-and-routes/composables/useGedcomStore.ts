@@ -61,8 +61,8 @@ export interface FactSources {
   marriage: string[]
 }
 
-// Living, deceased (a death event, also without a date: "1 DEAT Y") or not known
-export type LivingStatus = 'unknown' | 'living' | 'deceased'
+// Deceased (a death event, also without a date: "1 DEAT Y"), otherwise living
+export type LivingStatus = 'living' | 'deceased'
 
 export interface IndividualDraft {
   xrefId?: string
@@ -861,7 +861,8 @@ export const useGedcomStore = () => {
       names,
       sex: draft.sex,
       sexLinks: draft.sex ? sourceIds(draft.sources.sex) : undefined,
-      living: draft.livingStatus === 'living' ? true : undefined,
+      // Living is everybody without a death record; an imported _LIVING tag is not needed any more
+      living: undefined,
       birth: withSources('BIRT', createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date), draft.sources.birth, existing?.birth?.sourceCitations),
       death,
       notes: draft.notes.split(/\r?\n/).map(note => note.trim()).filter(Boolean),

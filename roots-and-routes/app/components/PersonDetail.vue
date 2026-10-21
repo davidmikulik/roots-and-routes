@@ -101,12 +101,12 @@ const family = computed(() => {
     }))
 })
 
-// Living or deceased (a death event, also without a date); nothing when not known. Not in the anonymized data.
+// Living or deceased (a death event, also without a date); without a death record the person is living
 const livingText = computed(() => {
   const self = person.value
   if (!self || anon.enabled.value) return ''
   if (self.death) return t(self.sex === 'M' ? 'tree.living.wasM' : self.sex === 'F' ? 'tree.living.wasF' : 'tree.living.was')
-  return self.living ? t('tree.living.isLiving') : ''
+  return t('tree.living.isLiving')
 })
 
 const avatar = computed(() => {

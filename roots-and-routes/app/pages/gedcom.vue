@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useColorMode } from '#imports'
-import { useGedcomStore } from '~~/composables/useGedcomStore'
+import { isStoredMedia, useGedcomStore } from '~~/composables/useGedcomStore'
 import type { DuplicateChoice } from '~~/composables/useGedcomStore'
 import type { GedcomFile } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
@@ -230,12 +230,20 @@ const cancelMerge = () => {
   duplicateChoices.value = {}
 }
 
+// Export of the loaded tree of the chosen database (with the edits not saved yet), for those who see the full data
+const exporting = ref(false)
+const canExport = computed(() => adminAuth.canRead.value && gedcomStore.hasData.value && !gedcomStore.state.value.anonymized)
+const storedAttachments = computed(() => [...(gedcomStore.state.value.file?.multimedia.values() || [])].filter(media => isStoredMedia(media.file)).length)
 const exportGedcom = async () => {
+  if (exporting.value) return
+  exporting.value = true
   try {
     const result = await gedcomStore.downloadGedcom()
     if (result.missing.length) window.alert(t('tree.exportMissing', { n: result.missing.length }))
   } catch (error: any) {
     window.alert(t('tree.exportFailed', { error: error?.data?.statusMessage || error?.message || '' }))
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -309,6 +317,25 @@ const viewTree = () => router.push('/tree')
             <option value="merge" :disabled="!gedcomStore.hasData.value && adminAuth.canManage.value">{{ t('gedcom.mode.merge') }}</option>
           </select>
         </div>
+
+        <section v-if="canExport" class="p-4 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }" data-gedcom-export>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h2 class="font-medium">{{ t('gedcom.export.title') }}</h2>
+              <p class="text-sm opacity-75">
+                {{ t('gedcom.export.summary', { name: gedcomStore.state.value.databaseName || t('gedcom.export.tree'), people: gedcomStore.totalIndividuals.value, attachments: storedAttachments }) }}
+              </p>
+            </div>
+            <button
+              type="button"
+              :disabled="exporting"
+              class="px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium disabled:opacity-60"
+              data-export-gedcom
+              @click="exportGedcom"
+            >{{ exporting ? t('gedcom.export.running') : t('gedcom.result.export') }}</button>
+          </div>
+          <p class="mt-2 text-xs opacity-60">{{ storedAttachments ? t('gedcom.export.zipHint') : t('gedcom.export.gedHint') }}</p>
+        </section>
 
         <section v-if="pendingGedcom && adminAuth.canEdit.value" class="p-5 rounded-lg border" :class="{ 'bg-gray-800 border-gray-600': isDark, 'bg-white border-gray-200': !isDark }">
           <h2 class="font-bold text-lg mb-1">{{ t('gedcom.merge.title') }}</h2>
@@ -417,6 +444,7 @@ const viewTree = () => router.push('/tree')
             </button>
             <button
               v-if="adminAuth.canRead.value"
+              :disabled="exporting"
               @click="exportGedcom"
               class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
             >

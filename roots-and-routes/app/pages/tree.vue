@@ -105,12 +105,17 @@ const importGedcom = () => {
 }
 
 // The whole tree, not just the people matching the search
+const exporting = ref(false)
 const exportGedcom = async () => {
+  if (exporting.value) return
+  exporting.value = true
   try {
     const result = await gedcomStore.downloadGedcom()
     if (result.missing.length) window.alert(t('tree.exportMissing', { n: result.missing.length }))
   } catch (error: any) {
     window.alert(t('tree.exportFailed', { error: error?.data?.statusMessage || error?.message || '' }))
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -361,17 +366,21 @@ const deletePerson = async (person: AppPerson) => {
         </div>
       </div>
 
+      <!-- Export of the whole tree, in every view -->
+      <div v-if="adminAuth.canRead.value && !gedcomStore.state.value.anonymized" class="mb-4 flex justify-end">
+        <button
+          @click="exportGedcom"
+          :title="t('tree.exportHint')"
+          :disabled="exporting"
+          class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-60"
+          data-export-gedcom
+        >
+          {{ exporting ? t('gedcom.export.running') : t('tree.export') }}
+        </button>
+      </div>
+
       <!-- List View -->
       <div v-if="viewMode === 'list'" class="overflow-x-auto">
-        <div v-if="adminAuth.canRead.value" class="mb-4 flex justify-end">
-          <button
-            @click="exportGedcom"
-            :title="t('tree.exportHint')"
-            class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg transition-colors text-sm font-medium"
-          >
-            {{ t('tree.export') }}
-          </button>
-        </div>
         <table class="w-full">
           <thead class="border-b">
             <tr :class="{ 'border-gray-700': isDark, 'border-gray-200': !isDark }">

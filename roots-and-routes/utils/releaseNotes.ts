@@ -20,6 +20,15 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.10.2',
+    date: '2026-10-28',
+    title: { cs: 'Export GEDCOM vždy po ruce', en: 'GEDCOM export always at hand' },
+    items: [
+      { kind: 'improved', cs: 'Na stránce Import a export GEDCOM je stále sekce Export: ukazuje rodokmen, počet osob a příloh a stáhne celý strom (s přílohami jako ZIP). Dřív se export nabízel jen hned po importu.', en: 'The GEDCOM import and export page always has an Export section: it shows the family tree, the number of people and attachments and downloads the whole tree (with attachments as a ZIP). Before, the export was offered only right after an import.' },
+      { kind: 'improved', cs: 'Tlačítko Exportovat GEDCOM je ve Stromu ve všech zobrazeních, nejen v seznamu.', en: 'The Export GEDCOM button is on the Tree page in every view, not only in the list.' },
+    ],
+  },
+  {
     version: '1.10.1',
     date: '2026-10-21',
     title: { cs: 'Věk žijících a věk ve všech stromech', en: 'Age of living people in every tree' },

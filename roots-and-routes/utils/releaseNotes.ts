@@ -20,6 +20,14 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.12.0',
+    date: '2026-10-29',
+    title: { cs: 'Nahrání zálohy z disku', en: 'Uploading a backup from the disk' },
+    items: [
+      { kind: 'new', cs: 'V Nastavení → Data a zálohy jde nahrát zálohu z disku: soubor GEDCOM (.ged) nebo stažený ZIP i s přílohami. Objeví se v seznamu záloh a obnovíte ji tlačítkem Obnovit.', en: 'Settings → Data and backups can upload a backup from the disk: a GEDCOM file (.ged) or a downloaded ZIP with its attachments. It appears in the list of backups and Restore brings it back.' },
+    ],
+  },
+  {
     version: '1.11.0',
     date: '2026-10-29',
     title: { cs: 'Ruční záloha a stažení zálohy', en: 'Manual backup and backup download' },

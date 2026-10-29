@@ -62,13 +62,24 @@ async function pruneBackups(db: DatabaseRecord, keep: number): Promise<void> {
   for (let start = 0; start < paths.length; start += 500) await del(paths.slice(start, start + 500), { token: requireBlobToken() })
 }
 
+// 20261012-154903-123
+const newBackupId = (): string => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').replace('.', '-').replace('Z', '')
+
+// A backup uploaded from the disk (Settings → Data and backups → Upload a backup): its GEDCOM text becomes a new
+// backup; its attachments the browser uploads straight into backupMediaDir (they can be larger than a request).
+export async function storeUploadedBackup(db: DatabaseRecord, text: string, keep: number): Promise<string> {
+  const id = newBackupId()
+  await put(backupPath(db, id), text, { access: 'private', token: requireBlobToken(), contentType: 'application/octet-stream', addRandomSuffix: false })
+  await pruneBackups(db, keep)
+  return id
+}
+
 // Backs up the current tree (as GEDCOM text) with its attachments and keeps only the newest `keep` backups.
 // Returns null when there is nothing to back up.
 export async function createBackup(db: DatabaseRecord, keep: number): Promise<string | null> {
   const current = await loadParsedGedcom(databasePaths(db).parsed)
   if (!current || current.individuals.size === 0) return null
-  // 20261012-154903-123
-  const id = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').replace('.', '-').replace('Z', '')
+  const id = newBackupId()
   const token = requireBlobToken()
   await put(backupPath(db, id), writeGedcom(current, { version: '5.5', encoding: 'UTF-8' }), {
     access: 'private',

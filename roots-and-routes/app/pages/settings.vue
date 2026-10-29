@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { downloadGedcomText, storedMediaOfText } from '~~/utils/gedcom/gedzip'
+import { STORED_MEDIA_PATH, mediaContentType } from '~~/utils/gedcom/mediaTypes'
 import { useReleaseNotes } from '~~/composables/useReleaseNotes'
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
@@ -146,6 +147,73 @@ const downloadBackup = async (backup: BackupInfo) => {
     message.value = { type: 'error', text: t('settings.data.downloadFailed', { error: error?.data?.statusMessage || error?.message || '' }) }
   } finally {
     downloading.value = ''
+  }
+}
+
+// A backup from the disk: a .ged file, or a ZIP from "Download" (gedcom.ged + media/). The GEDCOM text goes through
+// the server and becomes a new backup; the attachments go straight to the Blob store (they can be bigger than the
+// ~4.5 MB a request may carry). Restoring it is then the usual "Restore".
+const uploadInput = ref<HTMLInputElement | null>(null)
+const uploadingBackup = ref(false)
+const MAX_GEDCOM_BYTES = 4 * 1024 * 1024
+const uploadBackupFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  uploadingBackup.value = true
+  message.value = null
+  try {
+    let text: string
+    const attachments = new Map<string, Uint8Array>()
+    if (/\.zip$/i.test(file.name) || file.type.includes('zip')) {
+      const { unzipSync, strFromU8 } = await import('fflate')
+      const entries = unzipSync(new Uint8Array(await file.arrayBuffer()))
+      const gedcomName = 'gedcom.ged' in entries ? 'gedcom.ged' : Object.keys(entries).find(name => /\.ged(com)?$/i.test(name))
+      if (!gedcomName) throw new Error(t('settings.data.uploadNoGedcom'))
+      text = strFromU8(entries[gedcomName]!)
+      for (const [name, data] of Object.entries(entries)) if (STORED_MEDIA_PATH.test(name)) attachments.set(name, data)
+    } else {
+      text = await file.text()
+    }
+    if (new Blob([text]).size > MAX_GEDCOM_BYTES) throw new Error(t('settings.data.uploadTooLarge'))
+    const headers = adminAuth.authHeaders()
+    const result = await $fetch<{ id: string; people: number; media: string[]; mediaDir: string }>(`/api/admin/backups/upload?keep=${settings.value.data.backupCount}`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'text/plain; charset=utf-8' },
+      body: text,
+    })
+    let uploaded = 0
+    let missing = 0
+    if (result.media.length) {
+      const { upload } = await import('@vercel/blob/client')
+      const clientPayload = JSON.stringify({ token: adminAuth.token.value, database: adminAuth.databaseId.value, backupId: result.id })
+      for (const path of result.media) {
+        const data = attachments.get(path)
+        if (!data) { missing++; continue }
+        try {
+          await upload(`${result.mediaDir}/${path.slice('media/'.length)}`, new Blob([data as Uint8Array<ArrayBuffer>], { type: mediaContentType(path) }), {
+            access: 'private',
+            handleUploadUrl: '/api/admin/backups/media-token',
+            clientPayload,
+            // server/middleware/loginForWrites.ts needs the token on every POST, including the token request
+            headers,
+            contentType: mediaContentType(path),
+            multipart: data.length > 8 * 1024 * 1024,
+          })
+          uploaded++
+        } catch (error) {
+          console.error(`[BACKUP] Attachment ${path} could not be uploaded:`, error)
+          missing++
+        }
+      }
+    }
+    await loadBackups()
+    message.value = { type: missing ? 'error' : 'success', text: t(missing ? 'settings.data.uploadedMissing' : 'settings.data.uploaded', { people: result.people, attachments: uploaded, missing }) }
+  } catch (error: any) {
+    message.value = { type: 'error', text: t('settings.data.uploadFailed', { error: error?.data?.statusMessage || error?.message || '' }) }
+  } finally {
+    uploadingBackup.value = false
   }
 }
 
@@ -402,15 +470,25 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
               <h3 class="text-lg font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
                 {{ t('settings.data.backups') }}
               </h3>
-              <button
-                v-if="adminAuth.canEdit.value"
-                type="button"
-                :disabled="backingUp"
-                class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium disabled:opacity-60"
-                :title="t('settings.data.backupNowHint')"
-                data-backup-now
-                @click="createBackupNow"
-              >{{ backingUp ? t('settings.data.backupRunning') : t('settings.data.backupNow') }}</button>
+              <div v-if="adminAuth.canEdit.value" class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  :disabled="uploadingBackup"
+                  class="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-sm font-medium disabled:opacity-60"
+                  :title="t('settings.data.uploadHint')"
+                  data-backup-upload
+                  @click="uploadInput?.click()"
+                >{{ uploadingBackup ? t('settings.data.uploading') : t('settings.data.upload') }}</button>
+                <input ref="uploadInput" type="file" accept=".ged,.gedcom,.zip" class="hidden" data-backup-upload-input @change="uploadBackupFile">
+                <button
+                  type="button"
+                  :disabled="backingUp"
+                  class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium disabled:opacity-60"
+                  :title="t('settings.data.backupNowHint')"
+                  data-backup-now
+                  @click="createBackupNow"
+                >{{ backingUp ? t('settings.data.backupRunning') : t('settings.data.backupNow') }}</button>
+              </div>
             </div>
             <div v-if="!adminAuth.canEdit.value" class="space-y-3">
               <p class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.data.backupsAdminOnly') }}</p>

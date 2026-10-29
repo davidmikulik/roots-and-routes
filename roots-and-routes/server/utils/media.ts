@@ -5,29 +5,16 @@ import { randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { put, get } from '@vercel/blob'
+import { MEDIA_BY_EXTENSION, MEDIA_TYPES, type MediaKind } from '~~/utils/gedcom/mediaTypes'
 
 const MAX_BYTES = 20 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 20_000
 
-type MediaKind = 'image' | 'document'
-const TYPES: Record<string, { ext: string; kind: MediaKind }> = {
-  'image/jpeg': { ext: 'jpg', kind: 'image' },
-  'image/png': { ext: 'png', kind: 'image' },
-  'image/gif': { ext: 'gif', kind: 'image' },
-  'image/webp': { ext: 'webp', kind: 'image' },
-  'application/pdf': { ext: 'pdf', kind: 'document' },
-  'text/plain': { ext: 'txt', kind: 'document' },
-  'application/rtf': { ext: 'rtf', kind: 'document' },
-  'application/msword': { ext: 'doc', kind: 'document' },
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { ext: 'docx', kind: 'document' },
-  'application/vnd.oasis.opendocument.text': { ext: 'odt', kind: 'document' },
-  'application/vnd.ms-excel': { ext: 'xls', kind: 'document' },
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { ext: 'xlsx', kind: 'document' },
-  'application/vnd.oasis.opendocument.spreadsheet': { ext: 'ods', kind: 'document' },
-}
-const BY_EXTENSION = Object.fromEntries(Object.entries(TYPES).map(([contentType, info]) => [info.ext, contentType]))
-BY_EXTENSION.jpeg = 'image/jpeg'
+const TYPES = MEDIA_TYPES
+const BY_EXTENSION = MEDIA_BY_EXTENSION
+// For direct uploads of attachments (a backup uploaded from the disk)
+export const MEDIA_CONTENT_TYPES = Object.keys(MEDIA_TYPES)
 
 export interface CopiedMedia {
   file: string

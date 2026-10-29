@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { downloadGedcomText, storedMediaOfText } from '~~/utils/gedcom/gedzip'
 import { useReleaseNotes } from '~~/composables/useReleaseNotes'
 import { useColorMode } from '#imports'
 import { useGedcomStore } from '~~/composables/useGedcomStore'
@@ -105,6 +106,46 @@ const loadBackups = async () => {
     message.value = { type: 'error', text: t('settings.data.loadFailed') }
   } finally {
     backupsLoading.value = false
+  }
+}
+
+// A backup right now, of the tree as it is saved on the server (edits not saved yet are not in it)
+const backingUp = ref(false)
+const createBackupNow = async () => {
+  backingUp.value = true
+  message.value = null
+  try {
+    const result = await $fetch<{ id: string | null }>('/api/admin/backups', {
+      method: 'POST',
+      headers: adminAuth.authHeaders(),
+      body: { keep: settings.value.data.backupCount },
+    })
+    await loadBackups()
+    message.value = result.id
+      ? { type: 'success', text: gedcomStore.state.value.dirty ? t('settings.data.backupCreatedUnsaved') : t('settings.data.backupDone') }
+      : { type: 'error', text: t('settings.data.backupNothing') }
+  } catch (error: any) {
+    message.value = { type: 'error', text: t('settings.data.backupFailed', { error: error?.data?.statusMessage || error?.message || '' }) }
+  } finally {
+    backingUp.value = false
+  }
+}
+
+// Download of a backup: its GEDCOM, with attachments as a ZIP (GEDZIP) put together in the browser
+const downloading = ref('')
+const downloadBackup = async (backup: BackupInfo) => {
+  downloading.value = backup.id
+  message.value = null
+  try {
+    const headers = adminAuth.authHeaders()
+    const text = await $fetch<string>(`/api/admin/backups/${backup.id}`, { headers, responseType: 'text' })
+    const result = await downloadGedcomText(text, `roots-and-routes-backup-${backup.id}`, storedMediaOfText(text),
+      path => $fetch<Blob>(`/api/admin/backups/${backup.id}/${path}`, { headers, responseType: 'blob' }))
+    if (result.missing.length) message.value = { type: 'error', text: t('tree.exportMissing', { n: result.missing.length }) }
+  } catch (error: any) {
+    message.value = { type: 'error', text: t('settings.data.downloadFailed', { error: error?.data?.statusMessage || error?.message || '' }) }
+  } finally {
+    downloading.value = ''
   }
 }
 
@@ -357,9 +398,20 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
           </div>
 
           <div :class="cardClass">
-            <h3 class="text-lg font-bold mb-4" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
-              {{ t('settings.data.backups') }}
-            </h3>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 class="text-lg font-bold" :class="{ 'text-white': isDark, 'text-gray-900': !isDark }">
+                {{ t('settings.data.backups') }}
+              </h3>
+              <button
+                v-if="adminAuth.canEdit.value"
+                type="button"
+                :disabled="backingUp"
+                class="px-4 py-2 rounded bg-primary-600 text-white text-sm font-medium disabled:opacity-60"
+                :title="t('settings.data.backupNowHint')"
+                data-backup-now
+                @click="createBackupNow"
+              >{{ backingUp ? t('settings.data.backupRunning') : t('settings.data.backupNow') }}</button>
+            </div>
             <div v-if="!adminAuth.canEdit.value" class="space-y-3">
               <p class="text-sm opacity-75" :class="{ 'text-gray-400': isDark, 'text-gray-600': !isDark }">{{ t('settings.data.backupsAdminOnly') }}</p>
               <AdminLogin />
@@ -381,8 +433,15 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                   <td class="py-2">{{ formatDate(backup.createdAt) }}</td>
                   <td class="py-2">{{ formatSize(backup.size) }}</td>
                   <td class="py-2">{{ backup.attachments ?? 0 }}</td>
-                  <td class="py-2 text-right">
-                    <button v-if="adminAuth.canManage.value" class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
+                  <td class="py-2 text-right whitespace-nowrap">
+                    <button
+                      class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-60"
+                      :disabled="downloading === backup.id"
+                      :title="backup.attachments ? t('settings.data.downloadZipHint') : t('settings.data.downloadHint')"
+                      data-backup-download
+                      @click="downloadBackup(backup)"
+                    >{{ downloading === backup.id ? t('settings.data.downloading') : t('settings.data.download') }}</button>
+                    <button v-if="adminAuth.canManage.value" class="ml-2 px-3 py-1 rounded border border-gray-300 dark:border-gray-600" @click="restoreBackup(backup)">{{ t('settings.data.restore') }}</button>
                   </td>
                 </tr>
               </tbody>

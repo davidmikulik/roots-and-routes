@@ -85,6 +85,12 @@ export async function createBackup(db: DatabaseRecord, keep: number): Promise<st
   return id
 }
 
+// The folder of a backup's attachments (for downloading the backup with them, GET /api/admin/backups/<id>/media/<name>)
+export function backupMediaDir(db: DatabaseRecord, id: string): string {
+  if (!BACKUP_ID.test(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid backup id' })
+  return `${backupDir(db)}/${id}/media`
+}
+
 export async function readBackup(db: DatabaseRecord, id: string): Promise<string> {
   if (!BACKUP_ID.test(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid backup id' })
   return await getFileText(backupPath(db, id))

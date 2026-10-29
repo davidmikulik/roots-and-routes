@@ -20,6 +20,15 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.11.0',
+    date: '2026-10-29',
+    title: { cs: 'Ruční záloha a stažení zálohy', en: 'Manual backup and backup download' },
+    items: [
+      { kind: 'new', cs: 'V Nastavení → Data a zálohy je tlačítko Zálohovat teď: zazálohuje strom uložený na serveru i s přílohami. Starší zálohy nad nastavený počet se smažou.', en: 'Settings → Data and backups has a Back up now button: it backs up the tree saved on the server with its attachments. Older backups over the set number are deleted.' },
+      { kind: 'new', cs: 'Každou zálohu jde stáhnout: bez příloh jako soubor GEDCOM, s přílohami jako ZIP (gedcom.ged a složka media).', en: 'Every backup can be downloaded: without attachments as a GEDCOM file, with attachments as a ZIP (gedcom.ged and the media folder).' },
+    ],
+  },
+  {
     version: '1.10.2',
     date: '2026-10-28',
     title: { cs: 'Export GEDCOM vždy po ruce', en: 'GEDCOM export always at hand' },

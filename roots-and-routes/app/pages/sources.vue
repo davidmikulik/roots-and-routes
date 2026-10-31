@@ -315,7 +315,7 @@ const inputClass = 'w-full rounded border bg-transparent px-2 py-1.5'
         <!-- Detail or form -->
         <section class="rounded-lg border p-4" :class="cardClass" data-source-detail>
           <form v-if="editing" class="grid gap-3 sm:grid-cols-2" data-source-form @submit.prevent="save">
-            <h2 class="text-lg font-semibold sm:col-span-2">{{ creating ? t('sources.new') : t('sources.edit') }}</h2>
+            <h2 class="text-lg font-semibold sm:col-span-2">{{ creating ? t('sources.new') : t('sources.editTitle') }}</h2>
             <label class="sm:col-span-2">
               <span class="mb-1 block text-sm opacity-70">{{ t('sources.field.title') }} *</span>
               <input v-model="form.title" type="text" :class="inputClass" :placeholder="t('sources.field.titlePlaceholder')" required data-source-title>

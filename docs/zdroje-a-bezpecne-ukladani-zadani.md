@@ -1,6 +1,6 @@
 # Zadání: Fáze 1 – zdroj jako záznam a bezpečné ukládání změn
 
-> **Stav: návrh** (31. 10. 2026). Zatím nic není implementované. Vychází z toho, co se ukázalo při zapisování 35 zdrojů do stromu přes API: nálezy z matrik, sčítání lidu a katastru se do aplikace ukládají obtížně, přepis a překlad se píší do poznámek a změny přepisují celý strom. Zadání je fáze 1 ze tří (části A a C původního návrhu). Fáze 2 (varianty údajů, hypotézy, varianty jmen) a fáze 3 (deník hledání, domy, přehled „co chybí“) se zadají samostatně.
+> **Stav: implementováno ve verzi 1.13.0** (31. 10. 2026), viz kapitola 11 (odchylky, zjištění, rozhodnutí otevřených otázek). Původní text návrhu: Vychází z toho, co se ukázalo při zapisování 35 zdrojů do stromu přes API: nálezy z matrik, sčítání lidu a katastru se do aplikace ukládají obtížně, přepis a překlad se píší do poznámek a změny přepisují celý strom. Zadání je fáze 1 ze tří (části A a C původního návrhu). Fáze 2 (varianty údajů, hypotézy, varianty jmen) a fáze 3 (deník hledání, domy, přehled „co chybí“) se zadají samostatně.
 
 Cíl: aby se **každý nález z matriky** dal do aplikace uložit jako jeden přehledný záznam (archiv, kniha, snímek, přepis, překlad, obrázek, lidé v rolích) a aby šly změny **bezpečně navrhovat automaticky a schvalovat v aplikaci**, s historií a možností vrátit je zpět.
 
@@ -158,3 +158,37 @@ Každý krok se nasazuje samostatně a **nesmí rozbít stávající odkazy ani 
 3. Jak dlouho se uchovává historie (navrženo: bez omezení, ukládá se jen rozdíl)?
 4. Má se přepis a překlad ukazovat i uživatelům s oprávněním `read`, nebo jen `edit`?
 5. Chce zadavatel zachovat stávající odkazy (OBJE) i pro nové údaje, nebo po nasazení jen zdroje-záznamy?
+
+
+## 11. Implementace (verze 1.13.0)
+
+Hotové jsou všechny kroky z kapitoly 9. Kód: `utils/gedcom/sources.ts`, `utils/gedcom/sourceRoles.ts`, `utils/gedcom/changes.ts`, `server/utils/treeStore.ts`, `server/utils/pendingChanges.ts`, `server/middleware/apiTokenScope.ts`, stránky `/sources`, `/changes`, `/history`, sekce Přístupové klíče v Mém účtu. Popis pro vývojáře je v AGENTS.md (pasti „Zdroje-záznamy“, „Revize, historie a dávky“, „Klíč a čekající dávky“).
+
+### Odchylky od návrhu
+
+- **Jazyk, ověření a účastníci nejsou v `userData.extraTags`.** `extraTags` podřízené řádky neumí (`{ tag, value }`, parser je u osoby přeskakuje), proto jsou to typovaná pole `GedcomSource.language`, `verifiedBy`, `verifiedAt` a `participants`. V GEDCOM se zapisují přesně podle návrhu (`_LANG`, `_VERIFIED_BY`, `_VERIFIED_AT`, `_PART @I1@` + `2 ROLE`, `2 AGE`, `2 NOTE`).
+- **Role mají anglické kódy** (`baptized`, `godparent`, `household`…). Dávky i import přijímají i české názvy z kapitoly 3 (`kmotr`, `člen domácnosti`…), převádí je `normalizeSourceRole`.
+- **Ukládání z aplikace** posílá jen změněné záznamy (osoby, rodiny, zdroje…) s `baseRevision`. Server ho na starší revizi odmítne (409 se jmény osob) jen tehdy, když se mezitím měnily *stejné* záznamy; změny jiných osob spojí a aplikace si strom znovu načte. Návrh v 5.1 počítal s odmítnutím při jakékoli změně. Dávky (`/api/gedcom/changes`), schválení i vrácení vyžadují přesnou revizi, jak je v návrhu.
+- **Historie ukládá místo „inverzních operací“ záznamy před a po.** Vrácení vrátí záznamy do stavu „před“, ale jen když jsou všechny pořád ve stavu „po“ (jinak 409 se seznamem). Funguje stejně pro dávky i pro běžné úpravy v aplikaci. Import a obnova zálohy jsou v historii, ale vrátit je nejde (na to jsou zálohy); nad 3000 změněných záznamů se kopie neukládají.
+- **Hash klíče je SHA-256**, ne scrypt jako u hesel: tajemství je 32 náhodných bajtů, pomalý hash by jen zdržoval každý požadavek.
+- **Klíč na cizí základnu** (hlavička `X-Database`) vrací 401 jako neplatný klíč. Endpoint, který klíč nesmí, vrací 403.
+- **Navrhovatel smí nahrát obrázek** (`/api/media/upload`, `/api/media/copy`), aby dávka mohla poslat `image`. Soubor leží v příloze základny i před schválením.
+- **„Schválit vybrané“** provede vybrané operace a zbytek dávky zahodí (odkazy na `tempId` by jinak nemusely platit).
+- **`addNote` na zdroj není**: první poznámka zdroje je překlad, k zápisu poznámek slouží `updateSource` s `translation`.
+- **Převod odkazu** je na stránce Zdroje (oddíl „Odkazy, ze kterých jde udělat zdroj“), ne přímo v editoru osoby: převod mění víc osob najednou a editor drží rozpracovaný koncept jedné osoby. Odkaz se přesune z odkazů osoby do zdroje.
+
+### Zjištění z implementace
+
+- Zápis GEDCOM dřív **nezapisoval záznamy `REPO`, vazby `ASSO`, `TEXT`/`NOTE`/`OBJE` zdroje ani `QUAY` a `DATA/TEXT` citací**; po exportu a novém importu se ztratily. Parser četl `ASSO` bez `RELA`, `2 PAGE` pod osobní citací dával do `attributes.PAGE` a `2 SOUR` pod jménem považoval za citaci osoby. `resolveXrefs` přepisoval text citace názvem zdroje. Všechno je opravené a hlídá to `check:sources`.
+- Vercel Blob umí podmíněný zápis (`put` s `ifMatch`, ETag z `get`), takže kontrola revize nemá okno pro souběh.
+- Serverové endpointy jsou ověřené proti napodobenině Blobu v paměti (42 kontrol: rozdílové uložení, souběh, potvrzení přepisu, atomické dávky, historie a vrácení, klíče navrhovatele a editora, odmítnutí cizí základny a zrušeného klíče, návštěvník bez zdrojů). UI je prohlédnuté v Chrome na šířce 1280 a 390 px.
+
+### Rozhodnutí otevřených otázek (kapitola 10)
+
+Rozhodl jsem podle návrhu nebo podle toho, co aplikace už dělá; každé jde změnit.
+
+1. Navrhovatel smí zakládat osoby i rodiny, vždy jen ke schválení.
+2. Schvalovat smí každý s oprávněním `edit` na základně.
+3. Historie se uchovává bez omezení; ukládají se jen změněné záznamy.
+4. Přepis a překlad vidí každý s oprávněním `read` (stejně jako ostatní plná data). Anonymní režim a návštěvníci je nevidí.
+5. Stávající odkazy (OBJE) zůstávají a jdou použít i pro nové údaje vedle zdrojů-záznamů.

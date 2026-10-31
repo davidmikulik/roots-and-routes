@@ -731,25 +731,32 @@ export function describeChanges(changes: RecordChange[], files: GedcomFile[], la
 }
 
 // A short description of one operation of a batch, for the list of the pending changes
-export function describeOp(op: ChangeOp, file: GedcomFile, lang: Lang = 'cs'): string {
+export function describeOp(op: ChangeOp, file: GedcomFile, lang: Lang = 'cs', tempIds: Record<string, string> = {}): string {
+  const ref = (id: string) => tempIds[normalizeXrefId(id)] || normalizeXrefId(id)
   const name = (id?: string) => {
-    const person = id ? file.individuals.get(normalizeXrefId(id)) : undefined
+    const person = id ? file.individuals.get(ref(id)) : undefined
     return person ? formatPersonName(person.names) || id! : id || ''
   }
   const value = (item: unknown) => (typeof item === 'object' && item ? Object.entries(item as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([, v]) => String(v)).join(', ') : String(item ?? ''))
   const cs = lang === 'cs'
+  const FACTS: Record<string, [string, string]> = {
+    name: ['jméno', 'name'], marriedName: ['jméno po sňatku', 'name after marriage'], sex: ['pohlaví', 'sex'], birth: ['narození', 'birth'], BIRT: ['narození', 'birth'],
+    death: ['úmrtí', 'death'], DEAT: ['úmrtí', 'death'], marriage: ['sňatek', 'marriage'], MARR: ['sňatek', 'marriage'], baptism: ['křest', 'baptism'], BAPM: ['křest', 'baptism'],
+    burial: ['pohřeb', 'burial'], BURI: ['pohřeb', 'burial'], CENS: ['sčítání lidu', 'census'], RESI: ['bydliště', 'residence'], OCCU: ['povolání', 'occupation'], person: ['osoba', 'person'],
+  }
+  const factName = (fact?: string) => (fact ? FACTS[fact]?.[cs ? 0 : 1] || fact : '')
   switch (op.op) {
     case 'addSource': return `${cs ? 'Nový zdroj' : 'New source'}: ${op.title || ''}`
-    case 'updateSource': return `${cs ? 'Úprava zdroje' : 'Source changed'}: ${file.sources.get(normalizeXrefId(op.source))?.title || op.source}`
-    case 'setFact': return `${name(op.person) || op.family || ''} – ${op.fact}: ${value(op.value)}`
+    case 'updateSource': return `${cs ? 'Úprava zdroje' : 'Source changed'}: ${file.sources.get(ref(op.source))?.title || op.source}`
+    case 'setFact': return `${name(op.person) || op.family || ''} – ${factName(op.fact)}: ${value(op.value)}`
     case 'setName': return `${name(op.person)} – ${cs ? 'jméno' : 'name'}: ${[op.given, op.surname].filter(Boolean).join(' ')}`
     case 'addNote': return `${name(op.person) || op.family || ''} – ${cs ? 'poznámka' : 'note'}: ${op.text}`
     case 'createPerson': return `${cs ? 'Nová osoba' : 'New person'}: ${[op.given, op.surname].filter(Boolean).join(' ')}`
     case 'createFamily': return `${cs ? 'Nová rodina' : 'New family'}: ${[name(op.husband), name(op.wife)].filter(Boolean).join(' & ')}`
     case 'linkChild': return `${cs ? 'Dítě v rodině' : 'Child in family'} ${op.family}: ${name(op.child)}`
     case 'linkSpouse': return `${cs ? 'Partner v rodině' : 'Partner in family'} ${op.family}: ${name(op.person)}`
-    case 'attachSource': return `${cs ? 'Zdroj' : 'Source'} ${file.sources.get(normalizeXrefId(op.source))?.title || op.source} → ${name(op.person) || op.family || ''}${op.fact ? ` (${op.fact})` : ''}${op.role ? `, ${roleLabel(normalizeSourceRole(op.role), lang)}` : ''}`
-    case 'removeFact': return `${cs ? 'Smazat' : 'Remove'} ${op.fact}: ${name(op.person) || op.family || ''}`
+    case 'attachSource': return `${cs ? 'Zdroj' : 'Source'} ${file.sources.get(ref(op.source))?.title || op.source} → ${name(op.person) || op.family || ''}${op.fact ? ` (${factName(op.fact)})` : ''}${op.role ? `, ${roleLabel(normalizeSourceRole(op.role), lang)}` : ''}`
+    case 'removeFact': return `${cs ? 'Smazat' : 'Remove'} ${factName(op.fact)}: ${name(op.person) || op.family || ''}`
     default: return (op as { op: string }).op
   }
 }

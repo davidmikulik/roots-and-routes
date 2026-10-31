@@ -9,6 +9,7 @@ import { useGedcomStore } from '~~/composables/useGedcomStore'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
+import { messages, type MessageKey } from '~~/i18n'
 
 interface BatchSummary { id: string; title: string; createdAt: string; createdBy: { username: string; token?: string }; operations: number }
 interface BatchDetail {
@@ -116,6 +117,13 @@ const reject = async () => {
     busy.value = false
   }
 }
+// "DEAT.date" → "Úmrtí (datum)"
+const overwriteField = (field: string): string => {
+  const [fact, part] = field.split('.') as [string, string | undefined]
+  const factKey = [`changes.field.${fact}`, `tree.event.${fact}`].find(key => key in messages.en)
+  const partKey = `changes.part.${part}`
+  return `${factKey ? t(factKey as MessageKey) : fact}${part ? ` (${partKey in messages.en ? t(partKey as MessageKey) : part})` : ''}`
+}
 const who = (by: { username: string; token?: string }) => (by.token ? `${by.username} (${t('changes.viaKey', { name: by.token })})` : by.username)
 </script>
 
@@ -176,7 +184,7 @@ const who = (by: { username: string; token?: string }) => (by.token ? `${by.user
             <div v-if="detail.overwrites.length" class="mb-3 rounded border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-pending-overwrites>
               <p class="font-semibold">{{ t('changes.overwrites') }}</p>
               <ul class="mb-2 list-disc pl-5">
-                <li v-for="(item, index) in detail.overwrites" :key="index">{{ item.target }} – {{ item.field }}: <s>{{ item.before }}</s> → <strong>{{ item.after }}</strong></li>
+                <li v-for="(item, index) in detail.overwrites" :key="index">{{ item.target }} – {{ overwriteField(item.field) }}: <s>{{ item.before }}</s> → <strong>{{ item.after }}</strong></li>
               </ul>
               <label class="flex items-center gap-2"><input v-model="confirmOverwrite" type="checkbox" data-confirm-overwrite> {{ t('changes.confirmOverwrite') }}</label>
             </div>

@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
     tempIds: result.tempIds,
     overwrites: result.conflicts,
     unconfirmed,
-    operations: ops.map(op => describeOp(op, result.file, lang)),
+    operations: ops.map(op => describeOp(op, result.file, lang, result.tempIds)),
     preview: describeChanges(changes, [result.file, tree.file], lang),
   }
   if (dryRun) return { success: true, dryRun: true, ...overview }

@@ -16,9 +16,12 @@ export default defineEventHandler(async (event) => {
   // Only some operations: ?ops=0,2,3
   const selected = String(getQuery(event).ops || '').split(',').filter(Boolean).map(Number).filter(index => Number.isInteger(index) && batch.ops[index])
   const ops = selected.length ? selected.map(index => batch.ops[index]!) : batch.ops
-  const operations = batch.ops.map(op => describeOp(op, tree.file!, lang))
+  let operations = batch.ops.map(op => describeOp(op, tree.file!, lang))
   try {
     const result = applyChangeOps(tree.file, ops)
+    // With the new records, so the operations can name them (a new source instead of its tempId)
+    const all = selected.length ? (() => { try { return applyChangeOps(tree.file!, batch.ops) } catch { return result } })() : result
+    operations = batch.ops.map(op => describeOp(op, all.file, lang, all.tempIds))
     return {
       batch: { ...batch, ops: undefined, operations },
       revision: tree.revision,

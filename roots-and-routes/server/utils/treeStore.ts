@@ -125,8 +125,12 @@ export async function listHistory(db: DatabaseRecord): Promise<HistorySummary[]>
   return [...(await loadIndex(db)).index.entries].sort((a, b) => b.revision - a.revision)
 }
 
+// The entry with what the index knows since (revertedBy is written only into the index)
 export async function readHistoryEntry(db: DatabaseRecord, revision: number): Promise<HistoryEntry | null> {
-  return (await readJson<HistoryEntry>(historyPaths(db).entry(revision)))?.value || null
+  const entry = (await readJson<HistoryEntry>(historyPaths(db).entry(revision)))?.value
+  if (!entry) return null
+  const summary = (await loadIndex(db)).index.entries.find(item => item.revision === revision)
+  return summary?.revertedBy ? { ...entry, revertedBy: summary.revertedBy } : entry
 }
 
 // Records changed by the commits after `baseRevision`; null when that is not known (an import or a restore, or a

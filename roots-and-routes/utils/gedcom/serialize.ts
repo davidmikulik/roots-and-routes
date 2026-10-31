@@ -18,6 +18,8 @@ export interface SerializedGedcomFile {
   notes: [string, GedcomNote][]
   metadata: GedcomMetadata
   rawLines?: GedcomLine[]
+  // Revision of the tree on the server (server/utils/treeStore.ts)
+  revision?: number
 }
 
 const toEntries = <T>(value: Map<string, T> | [string, T][] | undefined): [string, T][] =>
@@ -30,7 +32,7 @@ const toMap = <T>(value: Map<string, T> | [string, T][] | undefined): Map<string
 // (GedcomDate.parsed/date1/date2, GedcomEvent.sortDate, metadata.earliest/latestDate)
 const DATE_KEYS = new Set(['parsed', 'date1', 'date2', 'sortDate', 'earliestDate', 'latestDate'])
 
-const reviveDates = <T>(value: T, seen = new WeakSet<object>()): T => {
+export const reviveDates = <T>(value: T, seen = new WeakSet<object>()): T => {
   if (!value || typeof value !== 'object' || value instanceof Date || seen.has(value)) return value
   seen.add(value)
   if (value instanceof Map) {
@@ -65,6 +67,7 @@ export function serializeGedcomFile(file: GedcomFile): SerializedGedcomFile {
     notes: toEntries(file.notes),
     metadata: file.metadata,
     rawLines: file.rawLines,
+    ...(file.revision !== undefined ? { revision: file.revision } : {}),
   }
 }
 
@@ -136,5 +139,6 @@ export function deserializeGedcomFile(serialized: SerializedGedcomFile): GedcomF
     notes: toMap(serialized.notes),
     metadata: reviveDates(serialized.metadata),
     rawLines: serialized.rawLines,
+    ...(typeof serialized.revision === 'number' ? { revision: serialized.revision } : {}),
   }
 }

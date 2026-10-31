@@ -14,6 +14,7 @@
     "typecheck": "vue-tsc --noEmit",
     "check:graph": "jiti scripts/check-graph.mts",
     "check:release": "jiti scripts/check-release-notes.mts",
+    "check:sources": "jiti scripts/check-sources.mts",
     "lint": "eslint . --ext .vue,.ts,.js,.tsx,.jsx",
     "vercel-build": "nuxt build",
     "deploy": "vercel --prod"

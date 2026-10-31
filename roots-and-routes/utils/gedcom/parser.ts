@@ -7,8 +7,9 @@ import type {
   GedcomEvent, GedcomDate, GedcomSource, GedcomSourceCitation, GedcomRepository,
   GedcomMultimedia, GedcomNote, GedcomMetadata, GedcomParseResult,
   GedcomParseOptions, GedcomEventType, AppPerson, MapEvent, FamilyTree,
-  GedcomCalendar, GedcomConfidenceLevel, GedcomAddress, GedcomAssociation
+  GedcomCalendar, GedcomConfidenceLevel, GedcomAddress, GedcomAssociation, GedcomSourceParticipant
 } from '~~/types/gedcom'
+import { normalizeSourceRole } from './sourceRoles'
 
 // Constants
 const DEFAULT_OPTIONS: GedcomParseOptions = { maxLines: 0, resolveXrefs: true, extractCoordinates: false }
@@ -53,8 +54,16 @@ class GedcomParser {
   private currentNamePerson: GedcomIndividual | null = null
   // Right after "1 SEX": its "2 OBJE" lines are the sources of the sex
   private currentSexPerson: GedcomIndividual | null = null
-  // The last "2 SOUR" of an event, for its "3 PAGE"
-  private currentEventCitation: GedcomSourceCitation | null = null
+  // The citation being read ("n SOUR @S1@"): lines below it (PAGE, QUAY, DATA/TEXT, NOTE) belong to it
+  private currentCitation: GedcomSourceCitation | null = null
+  private currentCitationLevel = 0
+  // Inside "DATA" of the citation (its TEXT), and the last text field for CONT/CONC lines
+  private citationField: 'page' | 'text' | 'notes' | null = null
+  // The association being read ("1 ASSO @I2@" with "2 RELA")
+  private currentAssociation: GedcomAssociation | null = null
+  // Source record: the last text field (CONT/CONC lines continue it) and the participant being read
+  private sourceField: 'title' | 'author' | 'publication' | 'text' | 'note' | null = null
+  private currentParticipant: GedcomSourceParticipant | null = null
   private currentFamilyEvent: GedcomEvent | null = null
   
   constructor(options: GedcomParseOptions = {}) {
@@ -142,6 +151,10 @@ class GedcomParser {
         this.currentIndividualEvent = null
         this.currentFamilyEvent = null
         this.currentName = null
+        this.currentCitation = null
+        this.currentAssociation = null
+        this.sourceField = null
+        this.currentParticipant = null
         
         if (line.xrefId && RECORD_TAGS.includes(line.tag)) {
           currentRecord = { type: line.tag, xrefId: line.xrefId, data: this.createRecord(line.tag, line.xrefId) }
@@ -302,21 +315,31 @@ class GedcomParser {
     const value = line.value
     const xrefId = line.xrefId
 
+    if (this.continueCitation(line)) return
     if (line.level > 1 && this.currentIndividualEvent) {
       this.processEventDetail(line, this.currentIndividualEvent)
       return
     }
     if (line.level > 1 && this.inUnknownIndividualTag) return
     if (line.level === 2 && this.currentName && this.currentNamePerson === individual && this.processNameDetail(tag, value, individual)) return
-    // Sources of the sex ("2 OBJE" under SEX); other lines under SEX are ignored
+    // Sources of the sex ("2 OBJE" or "2 SOUR" under SEX); other lines under SEX are ignored
     if (line.level > 1 && this.currentSexPerson === individual) {
       if (line.level === 2 && tag === 'OBJE' && value) (individual.sexLinks ||= []).push(normalizeXref(value))
+      if (line.level === 2 && tag === 'SOUR' && value) this.startCitation((individual.sexCitations ||= []), value, line.level)
+      return
+    }
+    // "2 RELA" and "2 SOUR" of an association
+    if (line.level > 1 && this.currentAssociation) {
+      if (line.level === 2 && tag === 'RELA') this.currentAssociation.relationship = value
+      else if (line.level === 2 && tag === 'SOUR' && value) this.startCitation((this.currentAssociation.sourceCitations ||= []), value, line.level)
+      else if (line.level === 2 && tag === 'NOTE') this.currentAssociation.description = value
       return
     }
 
     this.currentIndividualEvent = null
     this.inUnknownIndividualTag = false
     this.currentSexPerson = null
+    this.currentAssociation = null
     if (line.level === 1) this.currentName = null
     
     switch (tag) {
@@ -345,13 +368,15 @@ class GedcomParser {
         else if (value) individual.notes.push(value)
         break
       case 'SOUR':
-        individual.sourceCitations.push({ xref: normalizeXref(value), page: '', confidence: 2 })
+        if (value) this.startCitation(individual.sourceCitations, value, line.level)
         break
       case 'OBJE':
         if (value) individual.multimediaLinks.push(normalizeXref(value))
         break
       case 'ASSO':
-        individual.associations.push({ individualXref: normalizeXref(value), relationship: '', description: '' })
+        if (!value) break
+        this.currentAssociation = { individualXref: normalizeXref(value), relationship: '' }
+        individual.associations.push(this.currentAssociation)
         break
       default:
         if (EVENT_TYPES.includes(tag as GedcomEventType)) {
@@ -381,6 +406,7 @@ class GedcomParser {
     const value = line.value
     const xrefId = line.xrefId
 
+    if (this.continueCitation(line)) return
     if (line.level > 1 && this.currentFamilyEvent) {
       this.processEventDetail(line, this.currentFamilyEvent)
       return
@@ -403,7 +429,7 @@ class GedcomParser {
         else if (value) family.notes.push(value)
         break
       case 'SOUR':
-        family.sourceCitations?.push({ xref: normalizeXref(value), page: '', confidence: 2 })
+        if (value) this.startCitation((family.sourceCitations ||= []), value, line.level)
         break
       case 'OBJE':
         if (value) family.multimediaLinks.push(normalizeXref(value))
@@ -432,18 +458,12 @@ class GedcomParser {
   private processEventDetail(line: GedcomLine, event: GedcomEvent) {
     const tag = line.tag.toUpperCase()
     const value = line.value
-    // "3 PAGE" of a source citation of the event
-    if (line.level === 3 && tag === 'PAGE' && this.currentEventCitation && event.sourceCitations?.includes(this.currentEventCitation)) { this.currentEventCitation.page = value; return }
     if (line.level !== 2 && tag !== 'LATI' && tag !== 'LONG') return
-    this.currentEventCitation = null
     if (tag === 'DATE') event.date = this.parseDate(value)
-    // Sources of the event: a link or attachment (OBJE record) or a citation of a SOUR record
+    // Sources of the event: a link or attachment (OBJE record) or a citation of a SOUR record (its PAGE, QUAY… are
+    // read by continueCitation)
     else if (tag === 'OBJE' && value) (event.multimediaLinks ||= []).push(normalizeXref(value))
-    else if (tag === 'SOUR' && value) {
-      const citation: GedcomSourceCitation = { xref: normalizeXref(value) }
-      ;(event.sourceCitations ||= []).push(citation)
-      this.currentEventCitation = citation
-    }
+    else if (tag === 'SOUR' && value) this.startCitation((event.sourceCitations ||= []), value, line.level)
     else if (tag === 'PLAC') event.place = value
     else if (tag === 'CAUS') event.cause = value
     else if (tag === 'AGE') event.age = value
@@ -461,37 +481,115 @@ class GedcomParser {
     }
   }
 
+  // A citation of a source record at `level`; its sub-lines are read by continueCitation
+  private startCitation(list: GedcomSourceCitation[], value: string, level: number) {
+    const citation: GedcomSourceCitation = { xref: normalizeXref(value) }
+    list.push(citation)
+    this.currentCitation = citation
+    this.currentCitationLevel = level
+    this.citationField = null
+  }
+
+  // Lines below a citation: PAGE, QUAY, DATA / TEXT (the entry), NOTE, with CONT/CONC. Returns false (and ends the
+  // citation) for a line that is not below it.
+  private continueCitation(line: GedcomLine): boolean {
+    const citation = this.currentCitation
+    if (!citation) return false
+    if (line.level <= this.currentCitationLevel) {
+      this.currentCitation = null
+      return false
+    }
+    const tag = line.tag.toUpperCase()
+    const value = line.value
+    const depth = line.level - this.currentCitationLevel
+    if ((tag === 'CONT' || tag === 'CONC') && this.citationField) {
+      const glue = tag === 'CONT' ? '\n' : ''
+      citation[this.citationField] = `${citation[this.citationField] || ''}${glue}${value}`
+      return true
+    }
+    this.citationField = null
+    if (depth === 1 && tag === 'PAGE') { citation.page = value; this.citationField = 'page' }
+    else if (depth === 1 && tag === 'QUAY') {
+      const quality = Number(value)
+      if ([0, 1, 2, 3].includes(quality) && value.trim() !== '') citation.confidence = quality as GedcomConfidenceLevel
+    }
+    else if (depth === 1 && tag === 'NOTE') { citation.notes = value; this.citationField = 'notes' }
+    else if (depth === 2 && tag === 'TEXT') { citation.text = value; this.citationField = 'text' }
+    return true
+  }
+
   private processSourceLine(line: GedcomLine, source: GedcomSource) {
     const tag = line.tag.toUpperCase()
     const value = line.value
     const xrefId = line.xrefId
-    
+
+    // Continuation of a multi-line text (transcript, translation, title…)
+    if (line.level === 2 && (tag === 'CONT' || tag === 'CONC') && this.sourceField) {
+      const glue = tag === 'CONT' ? '\n' : ''
+      if (this.sourceField === 'note') source.notes[source.notes.length - 1] += `${glue}${value}`
+      else source[this.sourceField] = `${source[this.sourceField] || ''}${glue}${value}`
+      return
+    }
+    // Sub-lines of a participant (_PART)
+    if (line.level === 2 && this.currentParticipant) {
+      if (tag === 'ROLE') this.currentParticipant.role = normalizeSourceRole(value)
+      else if (tag === 'AGE') this.currentParticipant.age = value
+      else if (tag === 'NOTE') this.currentParticipant.note = value
+      return
+    }
+    if (line.level > 1) return
+    this.sourceField = null
+    this.currentParticipant = null
+
     switch (tag) {
       case 'TITL':
         source.title = value
+        this.sourceField = 'title'
         break
       case 'AUTH':
         source.author = value
+        this.sourceField = 'author'
         break
       case 'PUBL':
         source.publication = value
+        this.sourceField = 'publication'
         break
       case 'REPO':
-        source.repository = value
+        source.repository = normalizeXref(value)
         break
       case 'TEXT':
         source.text = value
+        this.sourceField = 'text'
         break
       case 'TYPE':
         source.type = value
         break
       case 'NOTE':
         if (xrefId) source.notes.push(xrefId)
-        else if (value) source.notes.push(value)
+        else { source.notes.push(value); this.sourceField = 'note' }
         break
       case 'OBJE':
-        if (value) source.multimediaLinks.push(value)
+        if (value) source.multimediaLinks.push(normalizeXref(value))
         break
+      case '_LANG':
+        if (value) source.language = value.trim()
+        break
+      case '_VERIFIED_BY':
+        if (value) source.verifiedBy = value.trim()
+        break
+      case '_VERIFIED_AT':
+        if (value) source.verifiedAt = value.trim()
+        break
+      case '_PART':
+        if (!value) break
+        this.currentParticipant = { person: normalizeXref(value), role: 'other' }
+        ;(source.participants ||= []).push(this.currentParticipant)
+        break
+      default: {
+        // Kept as it is and written back (CHAN, RIN, _UID…; their sub-lines are dropped)
+        const extraTags: ExtraTag[] = source.userData.extraTags ||= []
+        extraTags.push({ tag: line.tag, value })
+      }
     }
   }
 
@@ -499,13 +597,19 @@ class GedcomParser {
     const tag = line.tag.toUpperCase()
     const value = line.value
     const xrefId = line.xrefId
-    
+    // Parts of the address ("1 ADDR" / "2 CITY"…)
+    if (line.level === 2 && ['ADR1', 'ADR2', 'CITY', 'STAE', 'POST', 'CTRY'].includes(tag)) {
+      repository.address = this.parseAddress(line, repository.address || {})
+      return
+    }
+    if (line.level > 1) return
+
     switch (tag) {
       case 'NAME':
         repository.name = value
         break
       case 'ADDR':
-        repository.address = this.parseAddress(line, repository.address || {})
+        repository.address = repository.address || {}
         break
       case 'PHON':
         if (value) repository.phone?.push(value)
@@ -593,6 +697,9 @@ class GedcomParser {
       // A source of the name (a link or attachment of the person)
       case 'OBJE':
         if (value) (name.multimediaLinks ||= []).push(normalizeXref(value))
+        return true
+      case 'SOUR':
+        if (value) this.startCitation((name.sourceCitations ||= []), value, 2)
         return true
       case '_MARNM': {
         const surname = stripSurnameSlashes(value || '')
@@ -772,17 +879,6 @@ class GedcomParser {
         if (child && !child.familiesAsChild.includes(familyId)) child.familiesAsChild.push(familyId)
       }
     }
-    
-    // Resolve source citations
-    for (const [xrefId, source] of file.sources) {
-      for (const individual of file.individuals.values()) {
-        for (const citation of individual.sourceCitations) {
-          if (citation.xref === xrefId) {
-            citation.text = source.title
-          }
-        }
-      }
-    }
   }
 
   private extractCoordinates(file: GedcomFile) {
@@ -846,12 +942,27 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
   const version = options?.version || '5.5'
   const encoding = options?.encoding || 'UTF-8'
   const pointer = (xref: string) => `@${xref.replace(/@/g, '')}@`
+  // A text that may have several lines: the first on the tag's line, the others as CONT lines below it
+  const appendText = (level: number, tag: string, text?: string) => {
+    if (text === undefined || text === null) return
+    const [first, ...rest] = String(text).replace(/\r\n?/g, '\n').split('\n')
+    lines.push(first ? `${level} ${tag} ${first}` : `${level} ${tag}`)
+    for (const line of rest) lines.push(line ? `${level + 1} CONT ${line}` : `${level + 1} CONT`)
+  }
+  // A citation of a source record with its page, the text of the entry, the confidence (QUAY) and a note
+  const appendCitation = (citation: GedcomSourceCitation, level: number) => {
+    lines.push(`${level} SOUR ${pointer(citation.xref)}`)
+    if (citation.page) appendText(level + 1, 'PAGE', citation.page)
+    if (citation.text) {
+      lines.push(`${level + 1} DATA`)
+      appendText(level + 2, 'TEXT', citation.text)
+    }
+    if (citation.confidence !== undefined && citation.confidence !== null) lines.push(`${level + 1} QUAY ${citation.confidence}`)
+    if (citation.notes) appendText(level + 1, 'NOTE', citation.notes)
+  }
   // Sources of a fact: citations of SOUR records and links or attachments (OBJE records)
   const appendSources = (event: { sourceCitations?: GedcomSourceCitation[]; multimediaLinks?: string[] }, level: number) => {
-    for (const citation of event.sourceCitations || []) {
-      lines.push(`${level} SOUR ${pointer(citation.xref)}`)
-      if (citation.page) lines.push(`${level + 1} PAGE ${citation.page}`)
-    }
+    for (const citation of event.sourceCitations || []) appendCitation(citation, level)
     for (const media of event.multimediaLinks || []) lines.push(`${level} OBJE ${pointer(media)}`)
   }
   // An event line with its details; without any detail "1 DEAT Y" (the event happened, nothing more is known)
@@ -905,7 +1016,7 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     // Sex
     if (individual.sex) {
       lines.push(`1 SEX ${individual.sex}`)
-      appendSources({ multimediaLinks: individual.sexLinks }, 2)
+      appendSources({ sourceCitations: individual.sexCitations, multimediaLinks: individual.sexLinks }, 2)
     }
     // Living (our own tag); a death event says deceased
     if (individual.living && !individual.death) lines.push('1 _LIVING Y')
@@ -945,11 +1056,17 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
       lines.push(extra.value ? `1 ${extra.tag} ${extra.value}` : `1 ${extra.tag}`)
     }
 
-    // Sources
-    for (const citation of individual.sourceCitations) {
-      lines.push(`1 SOUR @${citation.xref.replace(/@/g, '')}@`)
-      if (citation.page) lines.push(`2 PAGE ${citation.page}`)
+    // Associations (godparents, witnesses…), with the source they come from
+    for (const association of individual.associations || []) {
+      if (!association.individualXref) continue
+      lines.push(`1 ASSO ${pointer(association.individualXref)}`)
+      if (association.relationship) lines.push(`2 RELA ${association.relationship}`)
+      if (association.description) lines.push(`2 NOTE ${association.description}`)
+      for (const citation of association.sourceCitations || []) appendCitation(citation, 2)
     }
+
+    // Sources
+    for (const citation of individual.sourceCitations) appendCitation(citation, 1)
 
     // Links, images and documents (OBJE records below)
     for (const media of individual.multimediaLinks) {
@@ -983,9 +1100,7 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
     }
     
     // Sources
-    for (const citation of family.sourceCitations || []) {
-      lines.push(`1 SOUR @${citation.xref.replace(/@/g, '')}@`)
-    }
+    for (const citation of family.sourceCitations || []) appendCitation(citation, 1)
 
     for (const media of family.multimediaLinks || []) {
       lines.push(`1 OBJE @${media.replace(/@/g, '')}@`)
@@ -993,11 +1108,48 @@ export function writeGedcom(file: GedcomFile, options?: { version?: '5.5' | '7.0
   }
   
   // Sources
+  // Sources: title, author, book (PUBL), archive (REPO), transcript (TEXT), translation and notes (NOTE), links and
+  // images (OBJE); our own tags for the language, the check and the people in the record with their roles
   for (const [xrefId, source] of file.sources) {
     lines.push(`0 @${xrefId.replace(/@/g, '')}@ SOUR`)
-    if (source.title) lines.push(`1 TITL ${source.title}`)
-    if (source.author) lines.push(`1 AUTH ${source.author}`)
-    if (source.publication) lines.push(`1 PUBL ${source.publication}`)
+    if (source.title) appendText(1, 'TITL', source.title)
+    if (source.author) appendText(1, 'AUTH', source.author)
+    if (source.publication) appendText(1, 'PUBL', source.publication)
+    if (source.type) lines.push(`1 TYPE ${source.type}`)
+    if (source.repository) lines.push(`1 REPO ${file.repositories.has(source.repository) ? pointer(source.repository) : source.repository}`)
+    if (source.text) appendText(1, 'TEXT', source.text)
+    for (const note of source.notes || []) if (note) appendText(1, 'NOTE', note)
+    for (const media of source.multimediaLinks || []) lines.push(`1 OBJE ${pointer(media)}`)
+    if (source.language) lines.push(`1 _LANG ${source.language}`)
+    if (source.verifiedBy) lines.push(`1 _VERIFIED_BY ${source.verifiedBy}`)
+    if (source.verifiedAt) lines.push(`1 _VERIFIED_AT ${source.verifiedAt}`)
+    for (const participant of source.participants || []) {
+      lines.push(`1 _PART ${pointer(participant.person)}`)
+      lines.push(`2 ROLE ${participant.role}`)
+      if (participant.age) lines.push(`2 AGE ${participant.age}`)
+      if (participant.note) lines.push(`2 NOTE ${participant.note.replace(/\s*[\r\n]+\s*/g, ' ')}`)
+    }
+    for (const extra of (source.userData?.extraTags || []) as ExtraTag[]) lines.push(extra.value ? `1 ${extra.tag} ${extra.value}` : `1 ${extra.tag}`)
+  }
+
+  // Repositories (archives)
+  for (const [xrefId, repository] of file.repositories) {
+    lines.push(`0 @${xrefId.replace(/@/g, '')}@ REPO`)
+    if (repository.name) lines.push(`1 NAME ${repository.name}`)
+    const address = repository.address
+    if (address && Object.values(address).some(Boolean)) {
+      lines.push(`1 ADDR ${address.line1 || ''}`.trimEnd())
+      if (address.line1) lines.push(`2 ADR1 ${address.line1}`)
+      if (address.line2) lines.push(`2 ADR2 ${address.line2}`)
+      if (address.city) lines.push(`2 CITY ${address.city}`)
+      if (address.state) lines.push(`2 STAE ${address.state}`)
+      if (address.postalCode) lines.push(`2 POST ${address.postalCode}`)
+      if (address.country) lines.push(`2 CTRY ${address.country}`)
+    }
+    for (const phone of repository.phone || []) lines.push(`1 PHON ${phone}`)
+    for (const email of repository.email || []) lines.push(`1 EMAIL ${email}`)
+    for (const web of repository.web || []) lines.push(`1 WWW ${web}`)
+    for (const note of repository.notes || []) if (note) appendText(1, 'NOTE', note)
   }
 
   // Multimedia (GEDCOM 5.5.1 layout: FORM and TITL under FILE). FILE is a web address, or media/<name> for a copy

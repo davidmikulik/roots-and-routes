@@ -22,6 +22,8 @@ export interface GedcomFile {
   notes: Map<string, GedcomNote>
   metadata: GedcomMetadata
   rawLines?: GedcomLine[]
+  // Revision of the tree saved on the server (grows with every saved change, server/utils/treeStore.ts)
+  revision?: number
 }
 
 export interface GedcomIndividual {
@@ -48,6 +50,8 @@ export interface GedcomIndividual {
   userData: Record<string, any>
   // Sources of the sex (OBJE records, "2 OBJE" under SEX)
   sexLinks?: string[]
+  // Citations of source records under SEX ("2 SOUR @S1@")
+  sexCitations?: GedcomSourceCitation[]
   // Recorded as living ("1 _LIVING Y"); a death event means deceased, neither means unknown
   living?: boolean
 }
@@ -77,6 +81,8 @@ export interface GedcomName {
   type?: string
   // Sources of the name (OBJE records, "2 OBJE" under NAME)
   multimediaLinks?: string[]
+  // Citations of source records ("2 SOUR @S1@" under NAME)
+  sourceCitations?: GedcomSourceCitation[]
 }
 
 export interface GedcomEvent {
@@ -125,23 +131,47 @@ export interface GedcomAddress {
   country?: string
 }
 
+// A source record (GEDCOM SOUR), e.g. one entry of a parish register: title, archive (REPO record), book (PUBL),
+// transcript of the original (TEXT), translation (NOTE), links and images (OBJE) and the people in it with their roles
+// (our own tag _PART), see utils/gedcom/sources.ts
 export interface GedcomSource {
   xrefId: string
   title: string
   author?: string
   publication?: string
+  // Id of the REPO record (archive); text when the file names the archive without a record
   repository?: string
+  // Transcript of the original
   text?: string
   type?: string
   multimediaLinks: string[]
+  // The translation is the first note ("Překlad" in the editor)
   notes: string[]
   userData: Record<string, any>
+  // Language of the record (cs, de, la…), our own tag _LANG
+  language?: string
+  // Who checked the record and when, our own tags _VERIFIED_BY and _VERIFIED_AT
+  verifiedBy?: string
+  verifiedAt?: string
+  // People in the record with their roles, our own tag "1 _PART @I1@" with "2 ROLE", "2 AGE", "2 NOTE"
+  participants?: GedcomSourceParticipant[]
 }
 
+export type SourceRole = 'baptized' | 'father' | 'mother' | 'godparent' | 'witness' | 'groom' | 'bride' | 'deceased' | 'household' | 'other'
+
+export interface GedcomSourceParticipant {
+  person: string
+  role: SourceRole
+  age?: string
+  note?: string
+}
+
+// A citation of a source record: "n SOUR @S1@" with PAGE (image, entry number), DATA/TEXT (the entry), QUAY and NOTE
 export interface GedcomSourceCitation {
   xref: string
   page?: string
   text?: string
+  // GEDCOM QUAY: 3 stated directly in the record, 2 probable, 1 from the family, 0 from someone else's work
   confidence?: GedcomConfidenceLevel
   notes?: string
 }
@@ -177,10 +207,13 @@ export interface GedcomNote {
   userData: Record<string, any>
 }
 
+// "1 ASSO @I2@ / 2 RELA godparent" in the record of I1: I2 is the godparent of I1. Associations made from the roles
+// of a source record cite that source ("2 SOUR @S1@"), so they can be kept in sync with it (utils/gedcom/sources.ts)
 export interface GedcomAssociation {
   individualXref: string
   relationship: string
   description?: string
+  sourceCitations?: GedcomSourceCitation[]
 }
 
 export interface GedcomMetadata {

@@ -1,7 +1,8 @@
 // GEDCOM Import API Endpoint
 import { parseGedcom } from '~~/utils/gedcom/parser'
 import { applyKnownLocations, getPlaceCoordinates, getUniqueGedcomLocations, learnKnownLocations, normalizeLocationName } from '~~/utils/gedcom/locations'
-import { validateFileSize, isGedcomFile, saveParsedGedcom, saveOriginalGedcom } from '~~/server/utils/storage'
+import { validateFileSize, isGedcomFile, saveOriginalGedcom } from '~~/server/utils/storage'
+import { commitTree, loadTree } from '~~/server/utils/treeStore'
 import { createBackup, clampBackupCount } from '~~/server/utils/backups'
 import { loadKnownLocations, saveKnownLocations } from '~~/server/utils/locationStorage'
 import type { GedcomParseResult, GedcomFile } from '~~/types'
@@ -61,7 +62,9 @@ export default defineEventHandler(async (event) => {
       await saveOriginalGedcom(paths.original, file)
 
       importStage = 'saving parsed GEDCOM data to server'
-      await saveParsedGedcom(parseResult.file, paths.parsed)
+      // A new revision with a history entry; the whole tree is replaced, so it cannot be reverted (the backup can)
+      const current = await loadTree(db)
+      await commitTree(db, { base: current, next: parseResult.file, actor, title: `Import ${filename}`, kind: 'import', changes: null, force: true })
     }
 
     return {

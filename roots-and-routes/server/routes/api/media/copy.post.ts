@@ -1,10 +1,11 @@
 // Downloads a linked image or document and stores a copy in the tree of the database of the request (level "edit")
-import { databasePaths, requireDatabase } from '~~/server/utils/access'
+import { databasePaths, requireEditOrProposer } from '~~/server/utils/access'
 import { requireBlobToken } from '~~/server/utils/storage'
 import { copyRemoteMedia } from '~~/server/utils/media'
 
 export default defineEventHandler(async (event) => {
-  const { db } = await requireDatabase(event, 'edit')
+  // Also a proposer's access key: images for the sources of a batch waiting for approval
+  const { db } = await requireEditOrProposer(event)
   const body = await readBody<{ url?: unknown }>(event)
   if (typeof body?.url !== 'string' || !body.url.trim()) throw createError({ statusCode: 400, statusMessage: 'url is required' })
   const copied = await copyRemoteMedia(body.url.trim(), databasePaths(db).prefix, requireBlobToken())

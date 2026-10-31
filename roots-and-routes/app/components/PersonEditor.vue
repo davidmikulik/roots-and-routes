@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // The person editor dialog shared by the Tree and the Graphical tree pages (composables/usePersonEditor.ts holds the
 // state and saves through the page's store). Name, sex, living or deceased, birth, death, parents, partner and
-// marriage, other events, links and attachments, notes. Every fact can name its sources among the links
-// (SourcePicker.vue).
+// marriage, other events, links and attachments, notes. Every fact can name its sources among the links and the source
+// records of the tree, or a new source record (SourcePicker.vue).
 import { isStoredMedia, type LinkDraft } from '~~/composables/useGedcomStore'
 import { newLinkDraft, type PersonEditor } from '~~/composables/usePersonEditor'
 import { parseCoordinatePair } from '~~/utils/gedcom/coordinates'
@@ -22,7 +22,7 @@ const eventLabel = (code: string): string => {
   const key = `tree.event.${code}`
   return key in messages.en ? t(key as MessageKey) : code
 }
-const createEmptyEventDraft = () => ({ type: 'EVEN' as const, date: '', place: '', latitude: '', longitude: '', description: '', sources: [] as string[] })
+const createEmptyEventDraft = () => ({ type: 'EVEN' as const, date: '', place: '', latitude: '', longitude: '', description: '', sources: [] as string[], citations: [] })
 const addEvent = () => form.value.events.push(createEmptyEventDraft())
 const removeEvent = (index: number) => form.value.events.splice(index, 1)
 // Heading of an event in the editor: its type and its number among events of that type ("Bydliště 2")
@@ -65,6 +65,16 @@ const createSourceLink = (): string => {
     row?.querySelector<HTMLInputElement>('input')?.focus()
   })
   return link.key!
+}
+// Source records: those of the tree and those created in this editor (saved with the person)
+const sourceRecords = computed(() => [
+  ...props.editor.sourceRecords.value,
+  ...form.value.newSources.map(source => ({ id: source.key, title: `${source.title} (${t('tree.sources.newBadge')})` })),
+])
+const createSourceRecord = (fields: { title: string; repository: string; publication: string; url: string }): string => {
+  const key = `new-source-${crypto.randomUUID()}`
+  form.value.newSources.push({ key, ...fields })
+  return key
 }
 const deceased = computed(() => form.value.livingStatus === 'deceased')
 // A copy downloaded from the address no longer matches a new address; a pasted file stays
@@ -167,7 +177,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <label class="text-sm">{{ t('tree.field.surname') }}
           <input v-model="form.surname" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" autocomplete="family-name" data-field-surname>
         </label>
-        <SourcePicker v-model="form.sources.name" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.name')" class="sm:col-span-2 -mt-2" data-sources-name />
+        <SourcePicker v-model="form.sources.name" v-model:citations="form.citations.name" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.name')" class="sm:col-span-2 -mt-2" data-sources-name />
         <label class="text-sm">{{ t('tree.field.marriedSurname') }}
           <input v-model="form.marriedSurname" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.marriedSurnamePlaceholder')" :title="t('tree.field.marriedSurnameHint')" data-field-married-surname>
         </label>
@@ -178,8 +188,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           </select>
         </label>
         <!-- Sources of the married name and of the sex, each under its field -->
-        <SourcePicker v-if="form.marriedSurname.trim()" v-model="form.sources.marriedName" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.marriedName')" class="-mt-2" />
-        <SourcePicker v-if="form.sex" v-model="form.sources.sex" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.sex')" class="-mt-2 sm:col-start-2" />
+        <SourcePicker v-if="form.marriedSurname.trim()" v-model="form.sources.marriedName" v-model:citations="form.citations.marriedName" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.marriedName')" class="-mt-2" />
+        <SourcePicker v-if="form.sex" v-model="form.sources.sex" v-model:citations="form.citations.sex" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.sources.fact.sex')" class="-mt-2 sm:col-start-2" />
         <label class="text-sm">{{ t('tree.field.living') }}
           <select v-model="form.livingStatus" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" :title="t('tree.field.livingHint')" data-field-living>
             <option value="living">{{ t('tree.living.living') }}</option>
@@ -196,7 +206,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <label class="text-sm">{{ t('tree.field.birthLongitude') }}
           <input v-model="form.birthLongitude" @paste="pasteCoordinates($event, form, 'birthLatitude', 'birthLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
-        <SourcePicker v-model="form.sources.birth" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.BIRT')" class="sm:col-span-2" data-sources-birth />
+        <SourcePicker v-model="form.sources.birth" v-model:citations="form.citations.birth" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.BIRT')" class="sm:col-span-2" data-sources-birth />
         <template v-if="deceased">
         <GedcomDateInput v-model="form.deathDate" :label="t('tree.field.deathDate')" class="sm:col-span-2" data-field-death-date />
         <label class="text-sm sm:col-span-2">{{ t('tree.field.deathPlace') }}
@@ -211,7 +221,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <label class="text-sm">{{ t('tree.field.deathLongitude') }}
           <input v-model="form.deathLongitude" @paste="pasteCoordinates($event, form, 'deathLatitude', 'deathLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
         </label>
-        <SourcePicker v-model="form.sources.death" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.DEAT')" class="sm:col-span-2" data-sources-death />
+        <SourcePicker v-model="form.sources.death" v-model:citations="form.citations.death" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.DEAT')" class="sm:col-span-2" data-sources-death />
         </template>
         <label class="text-sm">{{ t('tree.field.father') }}
           <select v-model="form.fatherId" class="mt-1 w-full rounded border px-3 py-2 bg-transparent" data-field-father>
@@ -242,7 +252,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <label class="text-sm">{{ t('tree.field.marriageLongitude') }}
             <input v-model="form.marriageLongitude" @paste="pasteCoordinates($event, form, 'marriageLatitude', 'marriageLongitude')" type="number" step="any" min="-180" max="180" class="mt-1 w-full rounded border px-3 py-2 bg-transparent">
           </label>
-          <SourcePicker v-model="form.sources.marriage" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.MARR')" class="sm:col-span-2" />
+          <SourcePicker v-model="form.sources.marriage" v-model:citations="form.citations.marriage" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="t('tree.event.MARR')" class="sm:col-span-2" />
         </div>
         <fieldset class="sm:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4">
           <div class="flex items-center justify-between mb-3">
@@ -267,7 +277,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <input v-model="event.description" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.description')">
             <input v-model="event.latitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-90" max="90" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.latitude')">
             <input v-model="event.longitude" @paste="pasteCoordinates($event, event, 'latitude', 'longitude')" type="number" step="any" min="-180" max="180" class="rounded border px-3 py-2 bg-transparent" :placeholder="t('tree.field.longitude')">
-            <SourcePicker v-model="event.sources" :links="form.links" :create-link="createSourceLink" :fact="eventHeading(index)" class="sm:col-span-2" />
+            <SourcePicker v-model="event.sources" v-model:citations="event.citations" :records="sourceRecords" :create-record="createSourceRecord" :links="form.links" :create-link="createSourceLink" :fact="eventHeading(index)" class="sm:col-span-2" />
           </div>
           <button type="button" @click="addEvent" class="mt-3 text-sm text-primary-700 dark:text-primary-300 underline">{{ t('tree.field.addEvent') }}</button>
         </fieldset>

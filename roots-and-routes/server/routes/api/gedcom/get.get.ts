@@ -1,17 +1,10 @@
 // GEDCOM Get API Endpoint - the tree of the database of the request (header X-Database, otherwise the default one,
 // see server/utils/access.ts). Full data from the level "read" up; visitors and the level "demo" get an anonymized copy.
-import { loadParsedGedcom, readOriginalGedcom } from '~~/server/utils/storage'
-import { parseGedcom } from '~~/utils/gedcom/parser'
 import { serializeGedcomFile } from '~~/utils/gedcom/serialize'
-import { databasePaths, databaseInfo, resolveDatabase } from '~~/server/utils/access'
+import { loadTree } from '~~/server/utils/treeStore'
+import { databaseInfo, resolveDatabase } from '~~/server/utils/access'
 import { anonymizeGedcomFile } from '~~/server/utils/anonymizeGedcom'
 import { levelAtLeast } from '~~/utils/accessLevels'
-import type { GedcomFile } from '~~/types'
-
-// Parsed data from before the Map serialization fix have empty maps although the metadata count people
-function isParsedDataCorrupted(file: GedcomFile): boolean {
-  return (file.metadata.totalIndividuals > 0 && file.individuals.size === 0) || (file.metadata.totalFamilies > 0 && file.families.size === 0)
-}
 
 export default defineEventHandler(async (event) => {
   console.log('[GEDCOM GET] Starting...')
@@ -21,23 +14,15 @@ export default defineEventHandler(async (event) => {
     const access = await resolveDatabase(event, { fallback: true })
     if (!access) return { success: false, message: 'No database is available', data: null }
     const { db, level, accounts, actor } = access
-    const paths = databasePaths(db)
     const full = levelAtLeast(level, 'read')
     const database = databaseInfo(accounts, actor, db, level)
     console.log(`[GEDCOM GET] Database ${db.id} (${level})`)
 
-    let gedcomData = await loadParsedGedcom(paths.parsed)
-    if (!gedcomData || isParsedDataCorrupted(gedcomData)) {
-      if (gedcomData) console.log(`[GEDCOM GET] WARNING: Corrupted parsed data: ${gedcomData.metadata.totalIndividuals} individuals in metadata, ${gedcomData.individuals.size} in map`)
-      const original = await readOriginalGedcom(paths.original)
-      if (original) {
-        console.log(`[GEDCOM GET] Re-parsing original file ${paths.original}`)
-        gedcomData = parseGedcom(original, { resolveXrefs: true, extractCoordinates: true }).file
-      }
-    }
+    // The parsed tree, or the original parsed again when the stored one is missing or from before the Map fix
+    const { file: gedcomData, revision } = await loadTree(db)
     if (!gedcomData) {
       console.log('[GEDCOM GET] No tree in this database')
-      return { success: false, message: 'No GEDCOM file found', data: { database } }
+      return { success: false, message: 'No GEDCOM file found', data: { database, revision } }
     }
 
     console.log(`[GEDCOM GET] Returning ${full ? 'full' : 'anonymized'} data with ${gedcomData.metadata.totalIndividuals || 0} individuals`)
@@ -51,6 +36,8 @@ export default defineEventHandler(async (event) => {
         fileInfo: { id: 'current', name: db.name },
         database,
         anonymized: !full,
+        // Every save sends it back (baseRevision); the server refuses a save based on an outdated tree
+        revision,
       },
       timestamp: new Date().toISOString(),
     }

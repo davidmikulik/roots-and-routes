@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// My account: the password and the databases (separate family trees) the user can open. Whoever manages a database
+// My account: the password, the databases (separate family trees) the user can open and the personal access keys
+// for automated work (AccessTokens.vue). Whoever manages a database
 // (its owner, an administrator) renames it, shares it with other users with a permission, and deletes it;
 // administrators also change the owner and choose the public database. See server/utils/access.ts.
 import { useColorMode } from '#imports'
@@ -291,6 +292,8 @@ const deleteDatabase = async (db: DatabaseInfo) => {
           <button type="submit" :disabled="creating || !newName.trim()" class="rounded bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-60">{{ t('account.databases.createButton') }}</button>
         </form>
       </section>
+
+      <AccessTokens v-if="!isSystemToken" class="mb-6 rounded-lg border p-5" :class="cardClass" />
 
       <section class="rounded-lg border p-5 text-sm" :class="cardClass">
         <h2 class="mb-2 text-lg font-semibold">{{ t('users.roles') }}</h2>

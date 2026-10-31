@@ -600,6 +600,7 @@ const buttonClass = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 da
                   <li>{{ t('settings.about.f3') }}</li>
                   <li>{{ t('settings.about.f4') }}</li>
                   <li>{{ t('settings.about.f5') }}</li>
+                  <li>{{ t('settings.about.f6') }}</li>
                 </ul>
               </div>
             </div>

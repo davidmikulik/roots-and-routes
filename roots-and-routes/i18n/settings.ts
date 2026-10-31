@@ -103,6 +103,7 @@ export default defineMessages({
   'settings.about.f3': 'Family tree list and graphical tree, a shared person editor and detail, sources of every fact, living or deceased, age',
   'settings.about.f4': 'Search by family name, incomplete dates, names after marriage, anonymous mode',
   'settings.about.f5': 'User accounts with permissions (demo, read, edit, administer) and separate family trees that can be shared',
+  'settings.about.f6': 'Sources as records (archive, book, transcript, translation, people with their roles, godparents and witnesses); history of every change with revert; changes from scripts with access keys, approved in the app',
 }, {
   'settings.title': 'Nastavení',
   'settings.subtitle': 'Upravte si předvolby aplikace',
@@ -206,4 +207,5 @@ export default defineMessages({
   'settings.about.f3': 'Seznam osob a grafický strom, společný editor a detail osoby, zdroje každého údaje, žijící a zemřelí, věk',
   'settings.about.f4': 'Hledání podle rodového jména, neúplná data, jména po sňatku, anonymní režim',
   'settings.about.f5': 'Uživatelské účty s oprávněními (demo, číst, editovat, administrovat) a samostatné rodokmeny, které jde přidělit dalším',
+  'settings.about.f6': 'Zdroje jako záznamy (archiv, kniha, přepis, překlad, lidé s rolemi, kmotři a svědci); historie každé změny s vrácením; změny ze skriptů s přístupovým klíčem, které se schvalují v aplikaci',
 })

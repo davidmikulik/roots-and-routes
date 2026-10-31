@@ -3,7 +3,7 @@
 import type { H3Event } from 'h3'
 import type { AccessLevel, DatabaseInfo, SessionInfo } from '~~/types/accounts'
 import { levelAtLeast, lowerLevel } from '~~/utils/accessLevels'
-import { loadAccounts, readSessionToken, type Accounts, type DatabaseRecord } from '~~/server/utils/accounts'
+import { findApiToken, isApiToken, loadAccounts, readSessionToken, saveAccounts, type Accounts, type ApiTokenKind, type DatabaseRecord } from '~~/server/utils/accounts'
 import { tokenMatchesAdmin } from '~~/server/utils/adminAuth'
 
 export interface Actor {
@@ -12,7 +12,14 @@ export interface Actor {
   role: AccessLevel
   // Logged in with ADMIN_API_TOKEN instead of a user account
   system?: boolean
+  // Logged in with a personal access key (rr_…): only its database, at most "edit" (editor) or "read" (proposer)
+  apiToken?: { id: string; name: string; kind: ApiTokenKind; databaseId: string }
 }
+
+// The highest level an access key gives
+const TOKEN_LEVEL: Record<ApiTokenKind, AccessLevel> = { proposer: 'read', editor: 'edit' }
+// The last use of a key is saved at most this often (not on every request)
+const LAST_USED_INTERVAL_MS = 10 * 60_000
 
 export const SYSTEM_ACTOR: Actor = { id: 'system', username: 'ADMIN_API_TOKEN', role: 'admin', system: true }
 
@@ -22,6 +29,22 @@ const bearerOf = (event: H3Event): string => (getHeader(event, 'authorization') 
 export async function actorFromToken(token: string, accounts?: Accounts): Promise<Actor | null> {
   if (!token) return null
   if (tokenMatchesAdmin(token)) return SYSTEM_ACTOR
+  if (isApiToken(token)) {
+    const all = accounts || await loadAccounts()
+    const found = findApiToken(all, token)
+    if (!found) return null
+    const { user, record } = found
+    if (!record.lastUsedAt || Date.now() - Date.parse(record.lastUsedAt) > LAST_USED_INTERVAL_MS) {
+      record.lastUsedAt = new Date().toISOString()
+      void saveAccounts(all).catch(error => console.error('[AUTH] Last use of a key could not be saved:', error))
+    }
+    return {
+      id: user.id,
+      username: user.username,
+      role: lowerLevel(user.role, TOKEN_LEVEL[record.kind]),
+      apiToken: { id: record.id, name: record.name, kind: record.kind, databaseId: record.databaseId },
+    }
+  }
   const session = readSessionToken(token)
   if (!session) return null
   const user = (accounts || await loadAccounts()).users.find(candidate => candidate.id === session.userId)
@@ -47,6 +70,12 @@ export async function requireActor(event: H3Event, minRole: AccessLevel = 'demo'
 // is "demo" for visitors and the role "demo", and "read" (full data, no changes) for logged-in users with a higher
 // role; editing it needs a grant.
 export function levelOn(accounts: Accounts, actor: Actor | null, db: DatabaseRecord): AccessLevel | null {
+  // An access key works for its own database only and never above its kind
+  if (actor?.apiToken) {
+    if (db.id !== actor.apiToken.databaseId) return null
+    const level = levelOn(accounts, { ...actor, apiToken: undefined }, db)
+    return level ? lowerLevel(level, TOKEN_LEVEL[actor.apiToken.kind]) : null
+  }
   const isPublic = accounts.publicDatabaseId === db.id
   if (!actor) return isPublic ? 'demo' : null
   if (actor.role === 'admin') return 'admin'
@@ -135,6 +164,8 @@ export const databasePaths = (db: DatabaseRecord) => ({
   parsed: `${db.prefix}/parsed/current.json`,
   backups: `${db.prefix}/backups`,
   media: `${db.prefix}/media`,
+  history: `${db.prefix}/history`,
+  pending: `${db.prefix}/pending`,
 })
 
 // GET /api/auth/me and the answer to a login
@@ -144,4 +175,12 @@ export function sessionInfo(accounts: Accounts, actor: Actor): SessionInfo {
     databases: accessibleDatabases(accounts, actor).map(({ db, level }) => databaseInfo(accounts, actor, db, level)),
     defaultDatabaseId: defaultDatabase(accounts, actor)?.id || null,
   }
+}
+
+// Changes that wait for approval: the level "edit", or a proposer's access key ("read" on its database)
+export async function requireEditOrProposer(event: H3Event): Promise<DatabaseAccess & { proposer: boolean }> {
+  const access = await requireDatabase(event, 'read')
+  const proposer = access.actor?.apiToken?.kind === 'proposer'
+  if (!proposer && !levelAtLeast(access.level, 'edit')) throw createError({ statusCode: 403, statusMessage: 'Permission denied' })
+  return { ...access, proposer }
 }

@@ -20,6 +20,21 @@ export interface Release {
 
 export const RELEASE_NOTES: Release[] = [
   {
+    version: '1.13.0',
+    date: '2026-10-31',
+    title: { cs: 'Zdroje jako záznamy a bezpečné ukládání', en: 'Sources as records and safe saving' },
+    items: [
+      { kind: 'new', cs: 'Nová stránka Zdroje: každý zápis z matriky nebo sčítání lidu je jeden záznam s archivem, knihou, přepisem, překladem, obrázkem a lidmi v rolích (křtěnec, kmotr, svědek, člen domácnosti…). Jde hledat podle názvu, knihy i osoby a filtrovat podle jistoty a archivu.', en: 'New Sources page: each entry from a register or census is one record with the archive, book, transcript, translation, image and people in their roles (baptized, godparent, witness, household member…). It can be searched by title, book or person and filtered by confidence and archive.' },
+      { kind: 'new', cs: 'V editoru osoby jde u každého údaje vybrat existující zdroj nebo založit nový, se snímkem a jistotou. Osoba se do zápisu doplní v roli podle údaje (narození → křtěnec, úmrtí → zemřelý, sňatek → ženich nebo nevěsta).', en: 'In the person editor every fact can cite an existing source or a new one, with the image and the confidence. The person joins the record in the role the fact gives (birth → baptized, death → deceased, marriage → groom or bride).' },
+      { kind: 'new', cs: 'Detail osoby ukazuje její zápisy s přepisem, překladem a tlačítkem Otevřít v archivu a kmotry a svědky v obou směrech („Kmotr: …“, „Kmotr u: …“).', en: 'The person detail lists their records with the transcript, translation and an Open in the archive button, and godparents and witnesses both ways ("Godparent: …", "Godparent of: …").' },
+      { kind: 'new', cs: 'Dosavadní odkaz osoby jde na stránce Zdroje převést na zdroj. Údaje, které ho měly jako zdroj, pak citují nový zdroj; odkaz i příloha zůstanou.', en: 'An existing link of a person can be converted into a source on the Sources page. The facts that had it as their source then cite the new source; the link and its attachment stay.' },
+      { kind: 'new', cs: 'Historie změn (menu pod zámkem): kdo co kdy změnil, s přehledem před a po, a tlačítko Vrátit zpět.', en: 'History of changes (menu under the lock): who changed what and when, with the before and after overview, and a Revert button.' },
+      { kind: 'new', cs: 'Můj účet → Přístupové klíče pro skripty. Změny z klíče navrhovatele čekají v Čekajících změnách, kde je jde prohlédnout (bylo / bude), schválit celé nebo po částech, nebo zamítnout.', en: 'My account → Access keys for scripts. Changes sent with a proposer key wait in Pending changes, where they can be reviewed (was / will be), approved whole or in part, or rejected.' },
+      { kind: 'improved', cs: 'Ukládání posílá na server jen změněné osoby a rodiny. Když stejnou osobu mezitím změnil někdo jiný, aplikace uložení odmítne a řekne, o koho jde; změny jiných osob se spojí.', en: 'Saving sends only the changed people and families to the server. When somebody else changed the same person meanwhile, the app refuses to save and names the person; changes of other people are combined.' },
+      { kind: 'fixed', cs: 'Export GEDCOM zachová archivy, kmotry a svědky (ASSO), stránku, jistotu a text citací zdrojů i víceřádkové přepisy.', en: 'The GEDCOM export keeps archives, godparents and witnesses (ASSO), the page, confidence and text of source citations and multi-line transcripts.' },
+    ],
+  },
+  {
     version: '1.12.0',
     date: '2026-10-29',
     title: { cs: 'Nahrání zálohy z disku', en: 'Uploading a backup from the disk' },

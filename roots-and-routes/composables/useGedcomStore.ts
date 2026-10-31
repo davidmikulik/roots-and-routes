@@ -1,5 +1,5 @@
 import { computed, effectScope, onMounted, watch } from 'vue'
-import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, GedcomSourceCitation, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
+import type { GedcomFile, GedcomParseResult, GedcomIndividual, GedcomEvent, GedcomName, GedcomDate, GedcomEventType, GedcomSourceCitation, GedcomSourceParticipant, GedcomConfidenceLevel, AppPerson, MapEvent, FamilyTree } from '~~/types/gedcom'
 import type { KnownLocation } from '~~/types/locations'
 import type { DatabaseInfo } from '~~/types/accounts'
 import { parseGedcom, parseGedcomDate, writeGedcom, convertToAppPerson, convertToFamilyTree, createMapEventsFromFile } from '~~/utils/gedcom/parser'
@@ -7,6 +7,9 @@ import { applyCatalogToTree, applyKnownLocations, learnKnownLocations, locationS
 import { birthNameOf, formatPersonName, isMarriedName, joinNameParts, marriedNameOf, nameMatches, namePartsOf, normalizeText } from '~~/utils/gedcom/names'
 import { serializeGedcomFile, deserializeGedcomFile, type SerializedGedcomFile } from '~~/utils/gedcom/serialize'
 import { downloadGedcomText, storedMediaPaths } from '~~/utils/gedcom/gedzip'
+import { RECORD_KINDS, recordKey, stableStringify, type RecordKind } from '~~/utils/gedcom/changes'
+import { addParticipant, applySourceFields, convertLinkToSource as convertLink, createSource, removeSource, syncSourceAssociations, type SourceFields } from '~~/utils/gedcom/sources'
+import { isConfidence, roleForFact } from '~~/utils/gedcom/sourceRoles'
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useSettings } from '~~/composables/useSettings'
 import { useT } from '~~/composables/useT'
@@ -26,6 +29,9 @@ interface GedcomState {
   // one chosen meanwhile
   databaseId: string | null
   databaseName: string
+  // Revision of the tree on the server the edits are based on (sent back as baseRevision); null when the tree did not
+  // come from the server
+  revision: number | null
 }
 
 export interface GedcomDuplicate {
@@ -41,8 +47,8 @@ export interface IndividualEventDraft {
   type: GedcomEventType
   date: string
   existingDate?: GedcomDate
-  // Citations of SOUR records from the import; kept as they are (the editor works with links as sources)
-  existingCitations?: GedcomSourceCitation[]
+  // Citations of source records (SOUR) with page and confidence
+  citations: CitationDraft[]
   place: string
   latitude: string
   longitude: string
@@ -60,6 +66,28 @@ export interface FactSources {
   birth: string[]
   death: string[]
   marriage: string[]
+}
+
+// A citation of a source record in the editor: `source` is the id of the record, or the key of a new one
+// (IndividualDraft.newSources); the text and note of an imported citation are kept
+export interface CitationDraft {
+  source: string
+  page: string
+  // '' = not stated, otherwise 0–3 (GEDCOM QUAY)
+  confidence: string
+  text?: string
+  notes?: string
+}
+
+export type FactCitations = Record<keyof FactSources, CitationDraft[]>
+
+// A source record created in the person editor (a short form); created when the person is saved
+export interface NewSourceDraft {
+  key: string
+  title: string
+  repository: string
+  publication: string
+  url: string
 }
 
 // Deceased (a death event, also without a date: "1 DEAT Y"), otherwise living
@@ -95,6 +123,9 @@ export interface IndividualDraft {
   events: IndividualEventDraft[]
   links: LinkDraft[]
   sources: FactSources
+  // Citations of source records of the facts (next to the links in `sources`)
+  citations: FactCitations
+  newSources: NewSourceDraft[]
   // A new parent: the id of the child this person becomes the father / mother of (usePersonEditor, relation father/mother)
   parentOf?: string
 }
@@ -179,6 +210,32 @@ export const mediaReferences = (file: GedcomFile): Set<string> => {
   return used
 }
 
+// The records of the tree as text (stableStringify), to tell which ones changed since the tree was loaded or saved
+const snapshotOf = (file: GedcomFile): Map<string, string> => {
+  const snapshot = new Map<string, string>()
+  for (const kind of RECORD_KINDS) for (const [id, record] of file[kind] as Map<string, unknown>) snapshot.set(recordKey(kind, id), stableStringify(record))
+  return snapshot
+}
+
+// The records that differ from the snapshot (null = removed), for POST /api/gedcom/save
+const deltaOf = (file: GedcomFile, snapshot: Map<string, string>): { kind: RecordKind; id: string; record: unknown }[] => {
+  const delta: { kind: RecordKind; id: string; record: unknown }[] = []
+  const seen = new Set<string>()
+  for (const kind of RECORD_KINDS) {
+    for (const [id, record] of file[kind] as Map<string, unknown>) {
+      const key = recordKey(kind, id)
+      seen.add(key)
+      if (snapshot.get(key) !== stableStringify(record)) delta.push({ kind, id, record })
+    }
+  }
+  for (const key of snapshot.keys()) {
+    if (seen.has(key)) continue
+    const [kind, ...rest] = key.split(':')
+    delta.push({ kind: kind as RecordKind, id: rest.join(':'), record: null })
+  }
+  return delta
+}
+
 const DATABASE_NAME = 'roots-and-routes'
 const STORE_NAME = 'gedcom'
 // One local copy per database (key = database id)
@@ -227,10 +284,10 @@ const deleteContent = async (key?: string): Promise<void> => {
   database.close()
 }
 
-type ServerData = { file: GedcomFile; parseResult: GedcomParseResult; fileId: string; anonymized: boolean; database: DatabaseInfo | null }
+type ServerData = { file: GedcomFile; parseResult: GedcomParseResult; fileId: string; anonymized: boolean; database: DatabaseInfo | null; revision: number | null }
 
 // null: the request failed; file null: the database has no tree yet
-const loadFromServer = async (headers: Record<string, string>): Promise<ServerData | { file: null; database: DatabaseInfo | null } | null> => {
+const loadFromServer = async (headers: Record<string, string>): Promise<ServerData | { file: null; database: DatabaseInfo | null; revision: number | null } | null> => {
   if (!import.meta.client) return null
   try {
     console.log('[GEDCOM] Fetching from server: /api/gedcom/get')
@@ -241,13 +298,14 @@ const loadFromServer = async (headers: Record<string, string>): Promise<ServerDa
         fileInfo?: { id: string; name: string; createdAt?: Date }
         database?: DatabaseInfo
         anonymized?: boolean
+        revision?: number
       } | null
     }>('/api/gedcom/get', { headers })
 
     console.log('[GEDCOM] Server response:', { success: response.success, hasFile: !!response.data?.file })
 
     if (!response.success || !response.data?.file || !response.data.fileInfo) {
-      return { file: null, database: response.data?.database || null }
+      return { file: null, database: response.data?.database || null, revision: typeof response.data?.revision === 'number' ? response.data.revision : null }
     }
 
     // Server sends Maps as entry arrays, restore them
@@ -263,7 +321,7 @@ const loadFromServer = async (headers: Record<string, string>): Promise<ServerDa
       }
     }
 
-    return { file, parseResult, fileId: response.data.fileInfo.id, anonymized: !!response.data.anonymized, database: response.data.database || null }
+    return { file, parseResult, fileId: response.data.fileInfo.id, anonymized: !!response.data.anonymized, database: response.data.database || null, revision: typeof response.data.revision === 'number' ? response.data.revision : null }
   } catch (error) {
     console.error('[GEDCOM] Failed to load GEDCOM from server:', error)
     return null
@@ -281,6 +339,7 @@ const createEmptyState = (): GedcomState => ({
   anonymized: false,
   databaseId: null,
   databaseName: '',
+  revision: null,
 })
 
 // Duplicates are matched by the birth name (the married name may be missing in the other file)
@@ -332,6 +391,8 @@ export interface LocationSyncResult { added: number; updated: number; filled: nu
 
 // Shared by every useGedcomStore() call
 let latestRequest = 0
+// The records as the server has them (after loading or saving): a save sends only those that differ
+let savedSnapshot: Map<string, string> | null = null
 // adminAuth.dataKey of the last load: the watcher below reloads only when the user or the database changed since
 let requestedKey: string | null = null
 let authWatcher: ReturnType<typeof effectScope> | null = null
@@ -357,16 +418,33 @@ export const useGedcomStore = () => {
   }
   const localKey = () => state.value.databaseId || DEFAULT_KEY
 
-  // Persist the current file to the server (the database it was loaded from); throws on failure
+  // Persist the changes to the server (the database the tree was loaded from); throws on failure. Only the changed
+  // records go to the server, with the revision the edits are based on: the server refuses them (409) when somebody
+  // else changed the same people meanwhile, and takes them when the others changed different ones (the tree is then
+  // loaded again to show their changes too). A tree that did not come from the server is sent whole.
   const saveToServer = async (file: GedcomFile): Promise<void> => {
     requireEditable()
     if (!state.value.fileId) return
-    await $fetch('/api/gedcom/save', {
-      method: 'POST',
-      headers: adminAuth.authHeaders(state.value.databaseId),
-      body: { fileId: state.value.fileId, fileData: serializeGedcomFile(file) },
-    })
+    const headers = adminAuth.authHeaders(state.value.databaseId)
+    const baseRevision = state.value.revision
+    const snapshot = savedSnapshot
+    let response: { revision?: number; merged?: boolean }
+    try {
+      response = snapshot && baseRevision !== null
+        ? await $fetch('/api/gedcom/save', { method: 'POST', headers, body: { baseRevision, changes: deltaOf(file, snapshot) } })
+        : await $fetch('/api/gedcom/save', { method: 'POST', headers, body: { fileId: state.value.fileId, baseRevision: baseRevision ?? undefined, fileData: serializeGedcomFile(file) } })
+    } catch (error: any) {
+      if ((error?.statusCode || error?.response?.status) === 409) {
+        const names = ((error?.data?.data?.conflicts || []) as { label: string }[]).map(item => item.label).join(', ')
+        throw new Error(names ? t('save.conflictPeople', { names }) : t('save.conflict'))
+      }
+      throw error
+    }
+    if (typeof response.revision === 'number') state.value.revision = response.revision
+    savedSnapshot = snapshotOf(file)
     state.value.dirty = false
+    // Other people's changes saved meanwhile: show them too
+    if (response.merged) void refreshFromServer()
   }
 
   // After an edit: send it to the server right away, or only remember it when auto-save is off
@@ -403,13 +481,17 @@ export const useGedcomStore = () => {
           anonymized: serverData.anonymized,
           databaseId: serverData.database?.id || null,
           databaseName: serverData.database?.name || '',
+          revision: serverData.revision,
         }
+        savedSnapshot = serverData.anonymized ? null : snapshotOf(serverData.file)
         return true
       } else if (serverData) {
         // A database without a tree (a new one): nothing from the previous database may stay on the screen.
         // fileId 'current' lets the first merge or edit be saved into it.
         console.log('[GEDCOM] No data found on server')
-        state.value = { ...createEmptyState(), fileId: serverData.database ? 'current' : null, databaseId: serverData.database?.id || null, databaseName: serverData.database?.name || '' }
+        state.value = { ...createEmptyState(), fileId: serverData.database ? 'current' : null, databaseId: serverData.database?.id || null, databaseName: serverData.database?.name || '', revision: serverData.revision }
+        // Nothing on the server: the first save sends the whole tree
+        savedSnapshot = null
       }
     } catch (error) {
       console.error('[GEDCOM] Failed to load from server:', error)
@@ -440,6 +522,8 @@ export const useGedcomStore = () => {
           }
           const result = parseGedcom(content, { resolveXrefs: true, extractCoordinates: true })
           state.value = { ...state.value, file: result.file, parseResult: result }
+          // Not the server's tree: a save would send it whole (and the server refuses it when it has a newer one)
+          savedSnapshot = null
           console.log(`[GEDCOM] Loaded ${result.file.metadata.totalIndividuals} individuals from IndexedDB`)
         } catch (fallbackError) {
           console.error('[GEDCOM] Failed to restore from local storage:', fallbackError)
@@ -485,6 +569,7 @@ export const useGedcomStore = () => {
       anonymized: state.value.anonymized,
       databaseId: state.value.databaseId,
       databaseName: state.value.databaseName,
+      revision: state.value.revision,
     }
   }
 
@@ -545,8 +630,9 @@ export const useGedcomStore = () => {
       // The import endpoint already stored this file on the server
       state.value.dirty = false
       state.value.anonymized = false
-      // The import endpoint stored it into the chosen database
+      // The import endpoint stored it into the chosen database; its revision and records come with the next load
       state.value.databaseId = adminAuth.databaseId.value || state.value.databaseId
+      if (import.meta.client) void refreshFromServer()
       if (import.meta.client) {
         try {
           await saveContent(localKey(), writeGedcom(result.file))
@@ -828,20 +914,48 @@ export const useGedcomStore = () => {
       const ids = [...new Set(keys.map(key => idByKey.get(key)).filter((id): id is string => !!id))]
       return ids.length ? ids : undefined
     }
-    // An event with its sources; sources alone make an event too (e.g. a birth record without a known date).
-    // Citations of SOUR records from the import stay.
-    const withSources = (type: GedcomEventType, event: GedcomEvent | undefined, keys: string[], citations?: GedcomSourceCitation[]): GedcomEvent | undefined => {
+    // Source records created in the editor, then the citations of the facts (page, confidence)
+    const newSourceIds = new Map<string, string>()
+    for (const source of draft.newSources || []) {
+      if (!source.title.trim()) throw new Error(t('sources.titleRequired'))
+      newSourceIds.set(source.key, createSource(file, { title: source.title, repository: source.repository, publication: source.publication, url: source.url }))
+    }
+    const citedSources = new Map<string, string[]>()
+    const citationsOf = (drafts: CitationDraft[] = [], fact: string): GedcomSourceCitation[] | undefined => {
+      const result: GedcomSourceCitation[] = []
+      for (const item of drafts) {
+        const id = newSourceIds.get(item.source) || item.source
+        if (!file.sources.has(id)) continue
+        const confidence = item.confidence === '' ? undefined : Number(item.confidence)
+        result.push({
+          xref: id,
+          ...(item.page.trim() ? { page: item.page.trim() } : {}),
+          ...(isConfidence(confidence) ? { confidence: confidence as GedcomConfidenceLevel } : {}),
+          ...(item.text ? { text: item.text } : {}),
+          ...(item.notes ? { notes: item.notes } : {}),
+        })
+        citedSources.set(id, [...(citedSources.get(id) || []), fact])
+      }
+      return result.length ? result : undefined
+    }
+    const citations = draft.citations || { name: [], marriedName: [], sex: [], birth: [], death: [], marriage: [] }
+    // An event with its sources; sources alone make an event too (e.g. a birth record without a known date)
+    const withSources = (type: GedcomEventType, event: GedcomEvent | undefined, keys: string[], cited?: GedcomSourceCitation[]): GedcomEvent | undefined => {
       const links = sourceIds(keys)
-      if (!event && !links && !citations?.length) return undefined
-      return { ...(event || { type }), multimediaLinks: links, sourceCitations: citations?.length ? citations : undefined }
+      if (!event && !links && !cited?.length) return undefined
+      return { ...(event || { type }), multimediaLinks: links, sourceCitations: cited?.length ? cited : undefined }
     }
     birth.multimediaLinks = sourceIds(draft.sources.name)
-    if (married) married.multimediaLinks = sourceIds(draft.sources.marriedName)
+    birth.sourceCitations = citationsOf(citations.name, 'name')
+    if (married) {
+      married.multimediaLinks = sourceIds(draft.sources.marriedName)
+      married.sourceCitations = citationsOf(citations.marriedName, 'marriedName')
+    }
     const names = [birth, ...(married ? [married] : []), ...otherNames]
     // Death: only when deceased; a deceased person without any details still gets the event ("1 DEAT Y")
     const deceased = draft.livingStatus === 'deceased'
     const death = deceased
-      ? withSources('DEAT', createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date, draft.deathCause || ''), draft.sources.death, existing?.death?.sourceCitations) || { type: 'DEAT' as const }
+      ? withSources('DEAT', createEvent('DEAT', draft.deathDate, draft.deathPlace, draft.deathLatitude, draft.deathLongitude, '', existing?.death?.date, draft.deathCause || ''), draft.sources.death, citationsOf(citations.death, 'death')) || { type: 'DEAT' as const }
       : undefined
     const individual: GedcomIndividual = {
       ...(existing || {
@@ -862,14 +976,15 @@ export const useGedcomStore = () => {
       names,
       sex: draft.sex,
       sexLinks: draft.sex ? sourceIds(draft.sources.sex) : undefined,
+      sexCitations: draft.sex ? citationsOf(citations.sex, 'sex') : undefined,
       // Living is everybody without a death record; an imported _LIVING tag is not needed any more
       living: undefined,
-      birth: withSources('BIRT', createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date), draft.sources.birth, existing?.birth?.sourceCitations),
+      birth: withSources('BIRT', createEvent('BIRT', draft.birthDate, draft.birthPlace, draft.birthLatitude, draft.birthLongitude, '', existing?.birth?.date), draft.sources.birth, citationsOf(citations.birth, 'birth')),
       death,
       notes: draft.notes.split(/\r?\n/).map(note => note.trim()).filter(Boolean),
       multimediaLinks: linkIds,
       events: draft.events
-        .map(event => withSources(event.type, createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate), event.sources, event.existingCitations))
+        .map(event => withSources(event.type, createEvent(event.type, event.date, event.place, event.latitude, event.longitude, event.description, event.existingDate), event.sources, citationsOf(event.citations, event.type)))
         .filter((event): event is GedcomEvent => Boolean(event)),
     }
     file.individuals.set(xrefId, individual)
@@ -946,11 +1061,23 @@ export const useGedcomStore = () => {
         }
         file.families.set(family.xrefId, family)
       }
-      family.marriage = withSources('MARR', createEvent('MARR', draft.marriageDate, draft.marriagePlace, draft.marriageLatitude, draft.marriageLongitude, '', family.marriage?.date), draft.sources.marriage, family.marriage?.sourceCitations)
+      family.marriage = withSources('MARR', createEvent('MARR', draft.marriageDate, draft.marriagePlace, draft.marriageLatitude, draft.marriageLongitude, '', family.marriage?.date), draft.sources.marriage, citationsOf(citations.marriage, 'marriage'))
       for (const personId of [xrefId, draft.spouseId]) {
         const person = file.individuals.get(personId)
         if (person && !person.familiesAsSpouse.includes(family.xrefId)) person.familiesAsSpouse.push(family.xrefId)
       }
+    }
+
+    // The person takes part in the cited records in the role their fact gives (birth → baptized, death → deceased,
+    // marriage → groom or bride), unless they already have a role there; godparents of the record become associations
+    for (const [id, facts] of citedSources) {
+      const source = file.sources.get(id)
+      if (!source) continue
+      if (!(source.participants || []).some(item => item.person === xrefId)) {
+        const role = facts.map(fact => roleForFact(fact, individual.sex)).find(Boolean)
+        if (role) addParticipant(source, { person: xrefId, role })
+      }
+      syncSourceAssociations(file, id)
     }
 
     // Known locations: fill coordinates from the catalog, add new places, pass changed coordinates on
@@ -998,6 +1125,7 @@ export const useGedcomStore = () => {
     const { fileId, databaseId, databaseName } = state.value
     const key = localKey()
     state.value = { ...createEmptyState(), fileId: databaseId ? 'current' : null, databaseId, databaseName }
+    savedSnapshot = null
     if (import.meta.client) {
       void deleteContent(key).catch(error => console.error('Failed to clear saved GEDCOM data:', error))
       // Deleting the tree on the server needs the permission to administer the database; otherwise only the local
@@ -1014,6 +1142,65 @@ export const useGedcomStore = () => {
         }
       }
     }
+  }
+
+  // After a change of the sources: the file is set again, kept locally and saved (or marked unsaved)
+  const commitLocal = async (file: GedcomFile) => {
+    file.metadata.totalSources = file.sources.size
+    file.metadata.totalRepositories = file.repositories.size
+    file.metadata.totalMultimedia = file.multimedia.size
+    const stats = state.value.parseResult?.stats || { linesProcessed: 0, recordsCreated: 0, parsingTime: 0 }
+    setFile(file, { file, warnings: [], errors: [], stats })
+    if (import.meta.client) {
+      await saveContent(localKey(), writeGedcom(file))
+      await persist(file)
+    }
+  }
+
+  // A source record (page Sources): new without an id. The fields not given stay; the participants replace the old
+  // ones, and godparents and witnesses become associations of the principal people.
+  const saveSource = async (id: string | null, fields: SourceFields, participants?: GedcomSourceParticipant[]): Promise<string> => {
+    requireEditable()
+    const file = state.value.file
+    if (!file) throw new Error(t('admin.noTree'))
+    if (fields.title !== undefined && !fields.title.trim()) throw new Error(t('sources.titleRequired'))
+    let sourceId = id
+    if (!sourceId) sourceId = createSource(file, fields)
+    else {
+      const source = file.sources.get(sourceId)
+      if (!source) throw new Error(t('sources.notFound'))
+      applySourceFields(file, source, fields)
+    }
+    if (participants) {
+      const source = file.sources.get(sourceId)!
+      source.participants = []
+      for (const participant of participants) if (file.individuals.has(participant.person)) addParticipant(source, participant)
+    }
+    syncSourceAssociations(file, sourceId)
+    await commitLocal(file)
+    return sourceId
+  }
+
+  // Removes a source record with its citations and the associations made from it (its links stay in the tree only
+  // while something else uses them)
+  const deleteSource = async (id: string): Promise<void> => {
+    requireEditable()
+    const file = state.value.file
+    if (!file?.sources.has(id)) return
+    const media = [...(file.sources.get(id)!.multimediaLinks || [])]
+    removeSource(file, id)
+    pruneMedia(file, media)
+    await commitLocal(file)
+  }
+
+  // "Convert to a source": a link becomes a source record that the facts using it cite (utils/gedcom/sources.ts)
+  const convertLinkToSource = async (mediaId: string, fields: SourceFields = {}): Promise<string> => {
+    requireEditable()
+    const file = state.value.file
+    if (!file) throw new Error(t('admin.noTree'))
+    const id = convertLink(file, mediaId, fields, (personId, type) => roleForFact(type, file.individuals.get(personId)?.sex || ''))
+    await commitLocal(file)
+    return id
   }
 
   const setError = (error: string) => {
@@ -1158,6 +1345,9 @@ export const useGedcomStore = () => {
     uploadMediaToTree,
     openStoredMedia,
     fetchStoredMedia,
+    saveSource,
+    deleteSource,
+    convertLinkToSource,
 
     // Helpers
     getAllAppPersons,

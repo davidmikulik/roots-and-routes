@@ -185,6 +185,7 @@ const avatar = computed(() => {
       </ul>
     </section>
 
+    <PersonSourceRecords :file="file" :person-id="personId" compact class="mt-3" @select-person="emit('select-person', $event)" />
     <PersonSources :file="file" :person-id="personId" compact class="mt-3" />
     <PersonLinks :file="file" :person-id="personId" compact class="mt-3" />
 

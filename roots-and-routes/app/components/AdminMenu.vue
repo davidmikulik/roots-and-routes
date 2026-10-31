@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The panel under the lock in the header once logged in: who is logged in, the database they work on (switching),
-// the actions their permissions allow (import and export, known places, map layers, backups, users) and logout.
+// the actions their permissions allow (import and export, known places, map layers, pending changes, history, backups,
+// users) and logout.
 // The home page has none of them, so visitors see only what they can use.
 import { useAdminAuth } from '~~/composables/useAdminAuth'
 import { useT } from '~~/composables/useT'
@@ -18,6 +19,8 @@ const LINKS: { to: string; icon: string; label: MessageKey; hint: MessageKey; ne
   { to: '/gedcom', icon: '📁', label: 'admin.menu.gedcom', hint: 'admin.menu.gedcomHint', needs: 'canEdit' },
   { to: '/admin/locations', icon: '📍', label: 'admin.menu.locations', hint: 'admin.menu.locationsHint', needs: 'canEditPlaces' },
   { to: '/admin/layers', icon: '🗺️', label: 'admin.menu.layers', hint: 'admin.menu.layersHint', needs: 'isSystemAdmin' },
+  { to: '/changes', icon: '📥', label: 'admin.menu.changes', hint: 'admin.menu.changesHint', needs: 'canEdit' },
+  { to: '/history', icon: '🕓', label: 'admin.menu.history', hint: 'admin.menu.historyHint', needs: 'canEdit' },
   { to: '/settings?section=data', icon: '💾', label: 'admin.menu.data', hint: 'admin.menu.dataHint', needs: 'canEdit' },
   { to: '/account', icon: '👤', label: 'admin.menu.account', hint: 'admin.menu.accountHint', needs: 'isLoggedIn' },
   { to: '/admin/users', icon: '👥', label: 'admin.menu.users', hint: 'admin.menu.usersHint', needs: 'isSystemAdmin' },

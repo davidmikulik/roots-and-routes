@@ -15,16 +15,17 @@ const { t } = useT()
 const adminPanelOpen = ref(false)
 const menuOpen = ref(false)
 
-// GEDCOM (import, merge, export) only with the permission to edit the chosen database; the other administration is
-// in the lock panel (AdminMenu.vue) once logged in
-const allNavLinks: { to: string; key: MessageKey; admin?: boolean }[] = [
+// Sources only for those who read the chosen database (full data); GEDCOM (import, merge, export) only with the
+// permission to edit it; the other administration is in the lock panel (AdminMenu.vue) once logged in
+const allNavLinks: { to: string; key: MessageKey; admin?: boolean; read?: boolean }[] = [
   { to: '/', key: 'nav.home' },
   { to: '/map', key: 'nav.map' },
   { to: '/tree', key: 'nav.tree' },
   { to: '/graph', key: 'nav.graph' },
+  { to: '/sources', key: 'nav.sources', read: true },
   { to: '/gedcom', key: 'nav.gedcom', admin: true },
 ]
-const navLinks = computed(() => allNavLinks.filter(link => !link.admin || adminAuth.canEdit.value))
+const navLinks = computed(() => allNavLinks.filter(link => (!link.admin || adminAuth.canEdit.value) && (!link.read || adminAuth.canRead.value)))
 
 const toggleMenu = () => {
   menuOpen.value = !menuOpen.value
@@ -57,6 +58,9 @@ const pageTitle = computed(() => {
     case '/map': return t('title.map')
     case '/tree': return t('title.tree')
     case '/graph': return t('title.graph')
+    case '/sources': return t('title.sources')
+    case '/changes': return t('title.changes')
+    case '/history': return t('title.history')
     case '/gedcom': return t('title.gedcom')
     case '/settings': return t('title.settings')
     case '/admin/locations': return t('title.locations')

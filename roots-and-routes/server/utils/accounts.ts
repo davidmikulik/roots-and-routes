@@ -7,7 +7,7 @@
 // Until the first user exists, the first login with the password ADMIN_API_TOKEN creates the administrator (and makes
 // them the owner of "main"). ADMIN_API_TOKEN itself keeps working as a Bearer token with the rights of an
 // administrator (scripts, recovery), see server/utils/access.ts.
-import { createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import { get, put } from '@vercel/blob'
 import type { AccessLevel } from '~~/types/accounts'
@@ -23,6 +23,25 @@ export interface UserRecord {
   // Raised by a password change; sessions signed with an older version are no longer valid
   sessionVersion: number
   createdAt: string
+  // Personal access keys for automated work (scripts), see apiTokens below
+  apiTokens?: ApiTokenRecord[]
+}
+
+// A personal access key: "rr_<id>_<secret>", sent as "Authorization: Bearer rr_…". Only the SHA-256 hash of the secret
+// is stored (the secret is 32 random bytes, so a fast hash is enough; the key itself is shown once). A key works for
+// one database only: "proposer" reads and sends batches of changes that wait for approval in the app, "editor" also
+// saves them right away. It never manages users, databases, backups or other keys (server/middleware/apiTokenScope.ts).
+export type ApiTokenKind = 'proposer' | 'editor'
+
+export interface ApiTokenRecord {
+  id: string
+  name: string
+  hash: string
+  kind: ApiTokenKind
+  databaseId: string
+  createdAt: string
+  expiresAt?: string
+  lastUsedAt?: string
 }
 
 export interface DatabaseRecord {
@@ -58,7 +77,12 @@ const sanitizeAccounts = (raw: unknown): Accounts => {
   const users = (Array.isArray(value.users) ? value.users : [])
     .filter(user => user && typeof user.id === 'string' && typeof user.username === 'string' && isAccessLevel(user.role)
       && typeof user.passwordHash === 'string' && typeof user.passwordSalt === 'string')
-    .map(user => ({ ...user, sessionVersion: Number(user.sessionVersion) || 0 }))
+    .map(user => ({
+      ...user,
+      sessionVersion: Number(user.sessionVersion) || 0,
+      apiTokens: (Array.isArray(user.apiTokens) ? user.apiTokens : []).filter(token =>
+        token && typeof token.id === 'string' && typeof token.hash === 'string' && (token.kind === 'proposer' || token.kind === 'editor') && typeof token.databaseId === 'string'),
+    }))
   const userIds = new Set(users.map(user => user.id))
   const databases = (Array.isArray(value.databases) ? value.databases : [])
     .filter(db => db && typeof db.id === 'string' && typeof db.name === 'string' && typeof db.prefix === 'string')
@@ -144,3 +168,31 @@ export function readSessionToken(token: string): { userId: string; version: numb
 }
 
 export const newId = (): string => randomUUID()
+
+// Access keys: rr_<12 hex id>_<43 characters of base64url>
+const API_TOKEN_PATTERN = /^rr_([a-f0-9]{12})_([A-Za-z0-9_-]{43})$/
+export const isApiToken = (token: string): boolean => token.startsWith('rr_')
+const hashSecret = (secret: string): string => createHash('sha256').update(secret).digest('hex')
+
+export function createApiToken(): { id: string; token: string; hash: string } {
+  const id = randomBytes(6).toString('hex')
+  const secret = randomBytes(32).toString('base64url')
+  return { id, token: `rr_${id}_${secret}`, hash: hashSecret(secret) }
+}
+
+// The user and the key behind an access key; null for a wrong, revoked or expired key
+export function findApiToken(accounts: Accounts, token: string): { user: UserRecord; record: ApiTokenRecord } | null {
+  const match = API_TOKEN_PATTERN.exec(token)
+  if (!match) return null
+  const [, id, secret] = match as unknown as [string, string, string]
+  for (const user of accounts.users) {
+    const record = user.apiTokens?.find(candidate => candidate.id === id)
+    if (!record) continue
+    const expected = Buffer.from(record.hash, 'hex')
+    const actual = Buffer.from(hashSecret(secret), 'hex')
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null
+    if (record.expiresAt && Date.parse(record.expiresAt) < Date.now()) return null
+    return { user, record }
+  }
+  return null
+}

@@ -2,8 +2,8 @@
 // add a new one, or add a relative of a person with the relation filled in. The page passes its store instance:
 // components must not call useGedcomStore() (every call re-fetches the tree on mount).
 // The dialog is app/components/PersonEditor.vue, the actions app/components/PersonActions.vue (buttons) and PersonActionsMenu.vue (right-click menu).
-import type { GedcomEvent, GedcomFile, GedcomIndividual } from '~~/types/gedcom'
-import { linkDraftOf, linksOf, type FactSources, type IndividualDraft, type LinkDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
+import type { GedcomEvent, GedcomFile, GedcomIndividual, GedcomSourceCitation } from '~~/types/gedcom'
+import { linkDraftOf, linksOf, type CitationDraft, type FactCitations, type FactSources, type IndividualDraft, type LinkDraft, type useGedcomStore } from '~~/composables/useGedcomStore'
 import { useT } from '~~/composables/useT'
 import { useAnonymize } from '~~/composables/useAnonymize'
 import { birthNameOf, formatPersonName, marriedNameOf, nameSortKey, namePartsOf } from '~~/utils/gedcom/names'
@@ -19,11 +19,21 @@ export function createEmptyDraft(): IndividualDraft {
     deathDate: '', deathPlace: '', deathCause: '', deathLatitude: '', deathLongitude: '',
     notes: '', fatherId: '', motherId: '', spouseId: '',
     marriageDate: '', marriagePlace: '', marriageLatitude: '', marriageLongitude: '', events: [], links: [],
-    sources: emptySources(),
+    sources: emptySources(), citations: emptyCitations(), newSources: [],
   }
 }
 
 export const emptySources = (): FactSources => ({ name: [], marriedName: [], sex: [], birth: [], death: [], marriage: [] })
+export const emptyCitations = (): FactCitations => ({ name: [], marriedName: [], sex: [], birth: [], death: [], marriage: [] })
+
+// Citations of a fact as the editor edits them (the text and note of an imported citation are kept)
+export const citationDrafts = (citations?: GedcomSourceCitation[]): CitationDraft[] => (citations || []).map(citation => ({
+  source: citation.xref,
+  page: citation.page || '',
+  confidence: citation.confidence === undefined || citation.confidence === null ? '' : String(citation.confidence),
+  text: citation.text,
+  notes: citation.notes,
+}))
 
 // A new link of the editor (its key lets the facts name it as their source before it is saved)
 export const newLinkDraft = (): LinkDraft => ({ key: `new-${crypto.randomUUID()}`, url: '', title: '' })
@@ -84,10 +94,19 @@ export function draftFromPerson(file: GedcomFile, individual: GedcomIndividual):
     events: individual.events.map(event => ({
       type: event.type, date: dateText(event), existingDate: event.date, place: event.place || '',
       latitude: coordinate(event, 0), longitude: coordinate(event, 1), description: event.description || '',
-      existingCitations: event.sourceCitations, sources: onlyKnown(event.multimediaLinks || []),
+      citations: citationDrafts(event.sourceCitations), sources: onlyKnown(event.multimediaLinks || []),
     })),
     links,
     sources: Object.fromEntries(Object.entries(sources).map(([fact, ids]) => [fact, onlyKnown(ids)])) as unknown as FactSources,
+    citations: {
+      name: citationDrafts(birthName?.sourceCitations),
+      marriedName: citationDrafts(marriedName?.sourceCitations),
+      sex: citationDrafts(individual.sexCitations),
+      birth: citationDrafts(individual.birth?.sourceCitations),
+      death: citationDrafts(individual.death?.sourceCitations),
+      marriage: citationDrafts(partnerFamily?.marriage?.sourceCitations),
+    },
+    newSources: [],
   }
 }
 
@@ -168,6 +187,11 @@ export const usePersonEditor = (store: Store) => {
     })
     .sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label)))
 
+  // Source records of the tree for the source pickers, by title
+  const sourceRecords = computed(() => [...(store.state.value.file?.sources.values() || [])]
+    .map(source => ({ id: source.xrefId, title: source.title || source.xrefId }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'cs')))
+
   const availability = (id: string): Record<Relation, boolean> => {
     const file = store.state.value.file
     return file ? relationAvailability(file, id) : { father: false, mother: false, partner: false, child: false, sibling: false }
@@ -226,7 +250,7 @@ export const usePersonEditor = (store: Store) => {
   // Editing only for the administrator on the real data (the store refuses it otherwise anyway)
   const canEdit = computed(() => store.hasData.value && !store.state.value.anonymized)
 
-  return { isOpen, draft, editingId, note, saving, people, canEdit, availability, nameOf, openEdit, openNew, close, save, errorText, media }
+  return { isOpen, draft, editingId, note, saving, people, sourceRecords, canEdit, availability, nameOf, openEdit, openNew, close, save, errorText, media }
 }
 
 export type PersonEditor = ReturnType<typeof usePersonEditor>

@@ -155,7 +155,7 @@ export function applyChangeOps(original: GedcomFile, ops: ChangeOp[], options: {
     return source || null
   }
   const nameOf = (person: GedcomIndividual) => `${formatPersonName(person.names) || '?'} (${person.xrefId})`
-  const conflict = (index: number, op: { overwrite?: boolean }, target: string, field: string, before: string, after: string) => {
+  const conflict = (index: number, op: object, target: string, field: string, before: string, after: string) => {
     if (!before || before === after) return
     conflicts.push({ op: index + 1, target, field, before, after: after || '—' })
     void op
@@ -187,7 +187,7 @@ export function applyChangeOps(original: GedcomFile, ops: ChangeOp[], options: {
   }
 
   // Writes the given fields of a value into an event; returns the event (new when there was none)
-  const writeEvent = (index: number, op: { overwrite?: boolean }, target: string, type: GedcomEventType, event: GedcomEvent | undefined, value: FactValue): GedcomEvent => {
+  const writeEvent = (index: number, op: object, target: string, type: GedcomEventType, event: GedcomEvent | undefined, value: FactValue): GedcomEvent => {
     const result: GedcomEvent = event ? event : { type }
     const fields: [keyof FactValue, 'place' | 'cause' | 'age' | 'description'][] = [['place', 'place'], ['cause', 'cause'], ['age', 'age'], ['description', 'description']]
     if (value.date !== undefined) {
@@ -278,7 +278,7 @@ export function applyChangeOps(original: GedcomFile, ops: ChangeOp[], options: {
     }
   }
 
-  const setName = (index: number, op: { overwrite?: boolean }, person: GedcomIndividual, given: string, surname: string, type: 'birth' | 'married', refs?: SourceRef[]) => {
+  const setName = (index: number, op: object, person: GedcomIndividual, given: string, surname: string, type: 'birth' | 'married', refs?: SourceRef[]) => {
     const existing = type === 'married' ? marriedNameOf(person.names) : birthNameOf(person.names)
     const full = joinNameParts({ prefix: existing?.prefix, given, surname, suffix: existing?.suffix })
     if (!full) {
@@ -322,7 +322,7 @@ export function applyChangeOps(original: GedcomFile, ops: ChangeOp[], options: {
         applySourceFields(file, source, op)
         const after = { title: source.title, publication: source.publication || '', repository: repositoryName(file, source), text: source.text || '', translation: translationOf(source) }
         for (const key of Object.keys(before) as (keyof typeof before)[]) {
-          if ((op as Record<string, unknown>)[key === 'text' ? 'transcript' : key] !== undefined) conflict(index, op as { overwrite?: boolean }, `${source.title || source.xrefId} (${source.xrefId})`, key, before[key], after[key])
+          if ((op as unknown as Record<string, unknown>)[key === 'text' ? 'transcript' : key] !== undefined) conflict(index, op, `${source.title || source.xrefId} (${source.xrefId})`, key, before[key], after[key])
         }
         if (!source.title) errors.push(`op ${index + 1}: a source needs a title`)
         const toParticipant = (item: ParticipantInput): GedcomSourceParticipant => ({ person: resolve(item.person), role: normalizeSourceRole(item.role), age: text(item.age) || undefined, note: text(item.note) || undefined })

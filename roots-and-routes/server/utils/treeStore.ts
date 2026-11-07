@@ -6,7 +6,7 @@
 // adds a history entry (<prefix>/history/<revision>.json: who, when, what, the changed records before and after) and
 // a line in <prefix>/history/index.json. Reverting puts the "before" records back (POST /api/gedcom/history/<n>/revert).
 // Backups of the whole tree (server/utils/backups.ts) stay as they were; the history adds to them.
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
+import { BlobPreconditionFailedError, get, head, put } from '@vercel/blob'
 import type { H3Event } from 'h3'
 import type { GedcomFile } from '~~/types/gedcom'
 import { parseGedcom } from '~~/utils/gedcom/parser'
@@ -64,12 +64,22 @@ export const historyPaths = (db: DatabaseRecord) => {
 const isCorrupted = (file: GedcomFile): boolean =>
   (file.metadata.totalIndividuals > 0 && file.individuals.size === 0) || (file.metadata.totalFamilies > 0 && file.families.size === 0)
 
+// The ETag for ifMatch. The `etag` header of get() can be weak (W/"…") or quoted when the response is compressed or
+// goes through a CDN, and a conditional write then never matches. head() returns the ETag the store compares with.
+async function writableEtag(pathname: string, fromGet?: string): Promise<string | undefined> {
+  try {
+    return (await head(pathname, blobOptions())).etag || undefined
+  } catch {
+    return fromGet ? fromGet.replace(/^W\//, '') : undefined
+  }
+}
+
 export async function loadTree(db: DatabaseRecord): Promise<TreeState> {
   const paths = databasePaths(db)
   const blob = await get(paths.parsed, { ...blobOptions(), useCache: false })
   let file: GedcomFile | null = null
   let revision = 0
-  const etag = blob?.blob?.etag
+  const etag = blob?.stream ? await writableEtag(paths.parsed, blob.blob?.etag) : undefined
   if (blob?.stream) {
     try {
       const serialized = JSON.parse(await new Response(blob.stream).text()) as SerializedGedcomFile
@@ -92,7 +102,7 @@ export async function loadTree(db: DatabaseRecord): Promise<TreeState> {
 async function readJson<T>(path: string): Promise<{ value: T; etag?: string } | null> {
   const blob = await get(path, { ...blobOptions(), useCache: false })
   if (!blob?.stream) return null
-  return { value: JSON.parse(await new Response(blob.stream).text()) as T, etag: blob.blob?.etag }
+  return { value: JSON.parse(await new Response(blob.stream).text()) as T, etag: await writableEtag(path, blob.blob?.etag) }
 }
 
 async function loadIndex(db: DatabaseRecord): Promise<{ index: HistoryIndex; etag?: string }> {

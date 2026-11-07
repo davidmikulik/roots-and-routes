@@ -64,25 +64,37 @@ export const historyPaths = (db: DatabaseRecord) => {
 const isCorrupted = (file: GedcomFile): boolean =>
   (file.metadata.totalIndividuals > 0 && file.individuals.size === 0) || (file.metadata.totalFamilies > 0 && file.families.size === 0)
 
-// The ETag for ifMatch. The `etag` header of get() can be weak (W/"…") or quoted when the response is compressed or
-// goes through a CDN, and a conditional write then never matches. head() returns the ETag the store compares with.
-async function writableEtag(pathname: string, fromGet?: string): Promise<string | undefined> {
-  try {
-    return (await head(pathname, blobOptions())).etag || undefined
-  } catch {
-    return fromGet ? fromGet.replace(/^W\//, '') : undefined
+const normalizeEtag = (etag?: string): string => (etag || '').replace(/^W\//, '').replace(/"/g, '')
+
+// Reads a stored file so that the body and the ETag for ifMatch belong to the SAME version. The `etag` header of get()
+// can be weak (W/"…") or quoted, so the ETag for ifMatch is taken from head() – but only when it is the same version as
+// the body that get() returned. A body from a stale cache read together with the current ETag of head() would let a save
+// through that writes the stale tree over the current one (records of the earlier saves are lost). When the versions
+// differ, the file is read again; `etag` stays undefined when they never match, and commitTree then refuses to save.
+async function readConsistent(pathname: string): Promise<{ text: string; etag?: string } | null> {
+  let text = ''
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const blob = await get(pathname, { ...blobOptions(), useCache: false })
+    if (!blob?.stream) return null
+    text = await new Response(blob.stream).text()
+    let current: string | undefined
+    try { current = (await head(pathname, blobOptions())).etag || undefined } catch { current = undefined }
+    if (current && normalizeEtag(current) === normalizeEtag(blob.blob?.etag)) return { text, etag: current }
+    console.warn(`[STORAGE] ${pathname}: the body (${blob.blob?.etag}) and the current version (${current}) differ, attempt ${attempt + 1}`)
+    await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
   }
+  return { text }
 }
 
 export async function loadTree(db: DatabaseRecord): Promise<TreeState> {
   const paths = databasePaths(db)
-  const blob = await get(paths.parsed, { ...blobOptions(), useCache: false })
+  const stored = await readConsistent(paths.parsed)
   let file: GedcomFile | null = null
   let revision = 0
-  const etag = blob?.stream ? await writableEtag(paths.parsed, blob.blob?.etag) : undefined
-  if (blob?.stream) {
+  const etag = stored?.etag
+  if (stored) {
     try {
-      const serialized = JSON.parse(await new Response(blob.stream).text()) as SerializedGedcomFile
+      const serialized = JSON.parse(stored.text) as SerializedGedcomFile
       revision = Number(serialized.revision) || 0
       // Arrays are the current format; objects are the old one whose maps were lost
       if (!(serialized.individuals && typeof serialized.individuals === 'object' && !Array.isArray(serialized.individuals))) file = deserializeGedcomFile(serialized)
@@ -100,9 +112,9 @@ export async function loadTree(db: DatabaseRecord): Promise<TreeState> {
 }
 
 async function readJson<T>(path: string): Promise<{ value: T; etag?: string } | null> {
-  const blob = await get(path, { ...blobOptions(), useCache: false })
-  if (!blob?.stream) return null
-  return { value: JSON.parse(await new Response(blob.stream).text()) as T, etag: await writableEtag(path, blob.blob?.etag) }
+  const stored = await readConsistent(path)
+  if (!stored) return null
+  return { value: JSON.parse(stored.text) as T, etag: stored.etag }
 }
 
 async function loadIndex(db: DatabaseRecord): Promise<{ index: HistoryIndex; etag?: string }> {
@@ -202,6 +214,8 @@ export async function commitTree(db: DatabaseRecord, options: CommitOptions): Pr
   next.revision = revision
 
   const paths = databasePaths(db)
+  // Without the ETag of the very version that was read, a stale read could not be detected: refuse instead of writing
+  if (base.file && !base.etag && !options.force) throw createError({ statusCode: 503, statusMessage: 'The stored tree could not be read consistently, try again' })
   try {
     await put(paths.parsed, JSON.stringify(serializeGedcomFile(next)), {
       ...blobOptions(), contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true,
